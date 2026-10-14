@@ -29,9 +29,11 @@ After editing files in `vlc/`, commit there and refresh the patch:
 
 Done: dark theme tokens, Inter font, icon font, player title bar, single-row
 control bar (pill play button, inline seek bar, gradient volume), rounded
-video stage, library title bar / side bar / inset content panel.
+video stage, library title bar / side bar / inset content panel, fullscreen
+window button, audio tracks button, music player view (rounded cover,
+"title - artist" caption, skip buttons in the control bar).
 
 Not yet: library page headers (breadcrumbs, item count, search field),
-library side panel inside the player, floating mini player card, music
-player view, settings window, onboarding, dialogs, context menus, light
-theme, fullscreen window button, remaining icons (stop, repeat, shuffle, …).
+library side panel inside the player, floating mini player card, settings
+window, onboarding, dialogs, context menus, light theme, restyled tracks
+popup, remaining icons (stop, repeat, shuffle, …).

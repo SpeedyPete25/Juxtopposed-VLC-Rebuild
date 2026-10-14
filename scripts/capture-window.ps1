@@ -20,6 +20,7 @@ public static class JuxtWin {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int hgt, bool repaint);
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int hgt, uint flags);
 }
 "@
 [JuxtWin]::SetProcessDPIAware() | Out-Null
@@ -32,6 +33,9 @@ $h = $proc.MainWindowHandle
 [JuxtWin]::ShowWindow($h, 9) | Out-Null   # SW_RESTORE
 if ($Width -gt 0 -and $Height -gt 0) { [JuxtWin]::MoveWindow($h, 40, 40, $Width, $Height, $true) | Out-Null }
 [JuxtWin]::SetForegroundWindow($h) | Out-Null
+# Windows may refuse to give us the foreground; keep the window on top anyway
+# while capturing (HWND_TOPMOST, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE).
+[JuxtWin]::SetWindowPos($h, [IntPtr](-1), 0, 0, 0, 0, 0x13) | Out-Null
 Start-Sleep -Milliseconds 800
 
 $r = New-Object JuxtWin+RECT
@@ -42,4 +46,5 @@ $g = [System.Drawing.Graphics]::FromImage($bmp)
 $g.CopyFromScreen($r.Left, $r.Top, 0, 0, $bmp.Size)
 $bmp.Save($Out, [System.Drawing.Imaging.ImageFormat]::Png)
 $g.Dispose(); $bmp.Dispose()
+[JuxtWin]::SetWindowPos($h, [IntPtr](-2), 0, 0, 0, 0, 0x13) | Out-Null   # HWND_NOTOPMOST
 "captured ${w}x${hh} -> $Out"
