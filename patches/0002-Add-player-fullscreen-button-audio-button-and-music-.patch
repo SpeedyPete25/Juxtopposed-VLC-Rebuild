@@ -1,0 +1,562 @@
+From dba79af83d23fee649c2e06f62833a2e5ec24c21 Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Wed, 14 Oct 2026 21:39:19 +1030
+Subject: [PATCH] Add player fullscreen button, audio button and music view
+
+Adds patches/0002 with the next part of the Juxtopposed player: a fullscreen window button, an audio track button in the control bar and the restyled music player view. Updates the README status to match.
+
+capture-window.ps1 now keeps the VLC window topmost while capturing, since Windows can refuse SetForegroundWindow and the screenshot would otherwise show whatever window is on top.
+---
+ modules/gui/qt/Makefile.am                    |  1 +
+ .../toolbar/controlbar_profile_model.cpp      |  4 +-
+ .../gui/qt/maininterface/mainctx_win32.cpp    |  3 +
+ modules/gui/qt/meson.build                    |  1 +
+ modules/gui/qt/player/control_list_model.hpp  |  4 +-
+ modules/gui/qt/player/qml/Player.qml          | 67 +++++++------
+ .../player/qml/PlayerControlbarControls.qml   |  3 +-
+ modules/gui/qt/player/qml/TracksListPage.qml  | 15 ++-
+ modules/gui/qt/player/qml/TracksMenu.qml      |  5 +
+ .../controlbarcontrols/AudioTrackButton.qml   | 96 +++++++++++++++++++
+ .../qml/controlbarcontrols/PlaylistButton.qml |  2 +-
+ modules/gui/qt/util/csdbuttonmodel.cpp        |  7 ++
+ modules/gui/qt/util/csdbuttonmodel.hpp        |  2 +
+ .../gui/qt/widgets/qml/CSDThemeButtonSet.qml  |  4 +
+ .../gui/qt/widgets/qml/CSDWindowButtonSet.qml |  7 ++
+ 15 files changed, 182 insertions(+), 39 deletions(-)
+ create mode 100644 modules/gui/qt/player/qml/controlbarcontrols/AudioTrackButton.qml
+
+diff --git a/modules/gui/qt/Makefile.am b/modules/gui/qt/Makefile.am
+index 22f2a01..8dce1cc 100644
+--- a/modules/gui/qt/Makefile.am
++++ b/modules/gui/qt/Makefile.am
+@@ -1209,6 +1209,7 @@ libqml_module_playercontrols_a_QML = \
+ 	player/qml/controlbarcontrols/ArtworkInfoWidget.qml \
+ 	player/qml/controlbarcontrols/AspectRatioWidget.qml \
+ 	player/qml/controlbarcontrols/AtoBButton.qml \
++	player/qml/controlbarcontrols/AudioTrackButton.qml \
+ 	player/qml/controlbarcontrols/BackButton.qml \
+ 	player/qml/controlbarcontrols/BookmarkButton.qml \
+ 	player/qml/controlbarcontrols/ChapterNextButton.qml \
+diff --git a/modules/gui/qt/dialogs/toolbar/controlbar_profile_model.cpp b/modules/gui/qt/dialogs/toolbar/controlbar_profile_model.cpp
+index 77f365b..99fcc10 100644
+--- a/modules/gui/qt/dialogs/toolbar/controlbar_profile_model.cpp
++++ b/modules/gui/qt/dialogs/toolbar/controlbar_profile_model.cpp
+@@ -111,6 +111,7 @@ decltype (ControlbarProfileModel::m_defaults)
+                                 },
+                                 {
+                                     ControlListModel::VOLUME,
++                                    ControlListModel::AUDIO_TRACK_BUTTON,
+                                     ControlListModel::LANG_BUTTON,
+                                     ControlListModel::EXTENDED_BUTTON,
+                                     ControlListModel::PLAYLIST_BUTTON
+@@ -134,8 +135,7 @@ decltype (ControlbarProfileModel::m_defaults)
+                                 },
+                                 {
+                                     ControlListModel::VOLUME,
+-                                    ControlListModel::LANG_BUTTON,
+-                                    ControlListModel::EXTENDED_BUTTON,
++                                    ControlListModel::AUDIO_TRACK_BUTTON,
+                                     ControlListModel::PLAYLIST_BUTTON
+                                 }
+                             }
+diff --git a/modules/gui/qt/maininterface/mainctx_win32.cpp b/modules/gui/qt/maininterface/mainctx_win32.cpp
+index ee33346..e1442ac 100644
+--- a/modules/gui/qt/maininterface/mainctx_win32.cpp
++++ b/modules/gui/qt/maininterface/mainctx_win32.cpp
+@@ -490,6 +490,9 @@ private:
+         const auto& buttons = m_buttonmodel->windowCSDButtons();
+         const auto it = std::find_if(buttons.begin(), buttons.end(), [&point](const auto& button)
+         {
++            // has no caption hit-test code, leave it to the client area
++            if (button->type() == CSDButton::Fullscreen)
++                return false;
+             QRect rect = button->rect();
+             rect.setY(rect.y() + 2); // leave a small gap for top resize which is always within the caption area
+             if (rect.contains(point))
+diff --git a/modules/gui/qt/meson.build b/modules/gui/qt/meson.build
+index f073abf..38c0ef3 100644
+--- a/modules/gui/qt/meson.build
++++ b/modules/gui/qt/meson.build
+@@ -769,6 +769,7 @@ qml_modules += {
+        'player/qml/controlbarcontrols/ArtworkInfoWidget.qml',
+        'player/qml/controlbarcontrols/AspectRatioWidget.qml',
+        'player/qml/controlbarcontrols/AtoBButton.qml',
++       'player/qml/controlbarcontrols/AudioTrackButton.qml',
+        'player/qml/controlbarcontrols/BackButton.qml',
+        'player/qml/controlbarcontrols/BookmarkButton.qml',
+        'player/qml/controlbarcontrols/ChapterNextButton.qml',
+diff --git a/modules/gui/qt/player/control_list_model.hpp b/modules/gui/qt/player/control_list_model.hpp
+index 6f6afda..a9d7dff 100644
+--- a/modules/gui/qt/player/control_list_model.hpp
++++ b/modules/gui/qt/player/control_list_model.hpp
+@@ -82,7 +82,7 @@ public:
+         NAVIGATION_BUTTONS,
+         PROGRAM_BUTTON,
+         NAVIGATION_BOX,
+-        RESERVED_0X2B,
++        AUDIO_TRACK_BUTTON, // Juxtopposed: audio tracks only (was RESERVED_0X2B)
+         RESERVED_0X2C,
+         RESERVED_0X2D,
+         RESERVED_0X2E,
+@@ -111,7 +111,7 @@ public:
+     Q_ENUM(ControlType)
+ 
+     static_assert(RESERVED_0X1F == 0x1F, "missaligned");
+-    static_assert(RESERVED_0X2B == 0x2B, "missaligned");
++    static_assert(AUDIO_TRACK_BUTTON == 0x2B, "missaligned");
+     static_assert(RESERVED_0X3F == 0x3F, "missaligned");
+ 
+     // Basic functionality:
+diff --git a/modules/gui/qt/player/qml/Player.qml b/modules/gui/qt/player/qml/Player.qml
+index d86d906..c268fc3 100644
+--- a/modules/gui/qt/player/qml/Player.qml
++++ b/modules/gui/qt/player/qml/Player.qml
+@@ -410,7 +410,7 @@ FocusScope {
+ 
+                     postprocess: true
+                     tint: bgtheme.palette.isDark ? "black" : "white"
+-                    tintStrength: 0.5
++                    tintStrength: bgtheme.palette.isDark ? 0.8 : 0.5 // Juxtopposed: near-black stage
+                     backgroundColor: bgtheme.bg.primary
+ 
+                     readonly property ColorContext colorContext: ColorContext {
+@@ -482,6 +482,8 @@ FocusScope {
+                     anchors.topMargin: VLCStyle.margin_xsmall + audioFocusScope.topPadding
+                     anchors.bottomMargin: VLCStyle.margin_xsmall + audioFocusScope.bottomPadding
+ 
++                    hoverEnabled: true // Juxtopposed: reveals audioControls
++
+                     onWheel: (wheel) => {
+                         wheel.accepted = true
+                         wheelToVlc.qmlWheelEvent(wheel)
+@@ -603,12 +605,13 @@ FocusScope {
+ 
+                         Item {
+                             id: coverItem
+-                            Layout.preferredHeight: rootPlayer.height / sizeConstant
++                            Layout.preferredHeight: centerContent.height / sizeConstant
+                             Layout.preferredWidth: cover.paintedWidth
+                             Layout.maximumHeight: centerContent.height
+                             Layout.alignment: Qt.AlignHCenter
+ 
+-                            readonly property real sizeConstant: 2.7182
++                            // Juxtopposed: the cover fills ~3/4 of the stage height
++                            readonly property real sizeConstant: 1.34
+ 
+                             Image {
+                                 id: cover
+@@ -649,6 +652,10 @@ FocusScope {
+ 
+                                 sourceSize: Qt.size(maximumSize, maximumSize)
+ 
++                                // Juxtopposed: only the texture source of the blur
++                                // and of roundedCover below
++                                visible: false
++
+                                 Accessible.role: Accessible.Graphic
+                                 Accessible.name: qsTr("Cover")
+ 
+@@ -667,6 +674,18 @@ FocusScope {
+                                                                                                                   }
+                                                                                                               })
+                                 }
++                            }
++
++                            Widgets.ImageExt {
++                                id: roundedCover
++
++                                anchors.centerIn: parent
++                                width: cover.paintedWidth
++                                height: cover.paintedHeight
++
++                                textureProviderItem: cover
++                                fillMode: Image.Stretch
++                                radius: VLCStyle.dp(16, VLCStyle.scale)
+ 
+                                 Widgets.RoundedRectangleShadow {
+                                     color: Qt.rgba(0, 0, 0, .18)
+@@ -686,7 +705,8 @@ FocusScope {
+                             id: albumLabel
+ 
+                             Layout.alignment: Qt.AlignHCenter
+-                            Layout.topMargin: VLCStyle.margin_xxlarge
++                            // Juxtopposed: same gap as above the cover
++                            Layout.topMargin: centerContent.height * 0.074
+ 
+                             Binding on visible {
+                                 delayed: true
+@@ -694,11 +714,14 @@ FocusScope {
+                                 value: centerContent.height > (albumLabel.y + albumLabel.height)
+                             }
+ 
+-                            text: Player.album
+-                            font.pixelSize: VLCStyle.fontSize_xxlarge
++                            // Juxtopposed: "title - artist" replaces the album and artist lines
++                            text: Player.artist ? qsTr("%1 - %2").arg(Player.title).arg(Player.artist)
++                                                : Player.title
++                            font.pixelSize: VLCStyle.fontSize_xxxlarge
++                            font.weight: Font.Normal
+                             horizontalAlignment: Text.AlignHCenter
+                             color: centerTheme.fg.primary
+-                            Accessible.description: qsTr("album")
++                            Accessible.description: qsTr("title")
+ 
+                             property bool componentCompleted: false
+ 
+@@ -713,11 +736,7 @@ FocusScope {
+                             Layout.alignment: Qt.AlignHCenter
+                             Layout.topMargin: VLCStyle.margin_small
+ 
+-                            Binding on visible {
+-                                delayed: true
+-                                when: artistLabel.componentCompleted
+-                                value: centerContent.height > (artistLabel.y + artistLabel.height)
+-                            }
++                            visible: false // Juxtopposed: shown in albumLabel
+ 
+                             text: Player.artist
+                             font.weight: Font.Light
+@@ -807,6 +826,12 @@ FocusScope {
+ 
+                             focus: true
+                             spacing: VLCStyle.margin_xxsmall
++
++                            // Juxtopposed: not part of the design's clean stage,
++                            // only shown on hover or keyboard focus
++                            opacity: (centerContent.containsMouse || visualFocus) ? 1.0 : 0.0
++                            Behavior on opacity { NumberAnimation { duration: VLCStyle.duration_short } }
++
+                             Navigation.parentItem: rootPlayer
+                             Navigation.upItem: topBar
+                             Navigation.downItem: syncToPlaybackCheckBox
+@@ -817,15 +842,6 @@ FocusScope {
+                                 componentCompleted = true
+                             }
+ 
+-                            Widgets.IconToolButton {
+-                                text: VLCIcons.skip_back
+-                                font.pixelSize: VLCStyle.icon_audioPlayerButton
+-                                onClicked: Player.jumpBwd()
+-                                description: qsTr("Step back")
+-
+-                                AccessibleCompat.id: "audioStepBackButton"
+-                            }
+-
+                             Widgets.IconToolButton {
+                                 text: VLCIcons.visualization
+                                 font.pixelSize: VLCStyle.icon_audioPlayerButton
+@@ -846,15 +862,6 @@ FocusScope {
+                                 Accessible.name: qsTr("Toggle lyrics view")
+                                 AccessibleCompat.id: "audioLyricsButton"
+                             }
+-
+-                            Widgets.IconToolButton{
+-                                text: VLCIcons.skip_for
+-                                font.pixelSize: VLCStyle.icon_audioPlayerButton
+-                                onClicked: Player.jumpFwd()
+-                                description: qsTr("Step forward")
+-
+-                                AccessibleCompat.id: "audioStepForwardButton"
+-                            }
+                         }
+ 
+                         // "Sync to Playback" checkbox pinned to bottom of right panel
+diff --git a/modules/gui/qt/player/qml/PlayerControlbarControls.qml b/modules/gui/qt/player/qml/PlayerControlbarControls.qml
+index 19a0798..50a105a 100644
+--- a/modules/gui/qt/player/qml/PlayerControlbarControls.qml
++++ b/modules/gui/qt/player/qml/PlayerControlbarControls.qml
+@@ -39,7 +39,7 @@ QtObject {
+         { id: ControlListModel.FASTER_BUTTON, file: "FasterButton.qml", label: VLCIcons.faster, text: qsTr("Faster") },
+         { id: ControlListModel.FULLSCREEN_BUTTON, file: "FullscreenButton.qml", label: VLCIcons.fullscreen, text: qsTr("Fullscreen") },
+         { id: ControlListModel.EXTENDED_BUTTON, file: "ExtendedSettingsButton.qml", label: VLCIcons.effect_filter, text: qsTr("Extended panel") },
+-        { id: ControlListModel.PLAYLIST_BUTTON, file: "PlaylistButton.qml", label: VLCIcons.playlist, text: qsTr("Play Queue") },
++        { id: ControlListModel.PLAYLIST_BUTTON, file: "PlaylistButton.qml", label: VLCIcons.lists, text: qsTr("Play Queue") },
+         { id: ControlListModel.SNAPSHOT_BUTTON, file: "SnapshotButton.qml", label: VLCIcons.snapshot, text: qsTr("Snapshot") },
+         { id: ControlListModel.RECORD_BUTTON, file: "RecordButton.qml", label: VLCIcons.record, text: qsTr("Record") },
+         { id: ControlListModel.ATOB_BUTTON, file: "AtoBButton.qml", label: VLCIcons.atob, text: qsTr("A-B Loop") },
+@@ -52,6 +52,7 @@ QtObject {
+         { id: ControlListModel.RANDOM_BUTTON, file: "RandomButton.qml", label: VLCIcons.shuffle, text: qsTr("Random") },
+         { id: ControlListModel.LOOP_BUTTON, file: "LoopButton.qml", label: VLCIcons.repeat_all, text: qsTr("Loop") },
+         { id: ControlListModel.INFO_BUTTON, file: "InfoButton.qml", label: VLCIcons.info, text: qsTr("Information") },
++        { id: ControlListModel.AUDIO_TRACK_BUTTON, file: "AudioTrackButton.qml", label: VLCIcons.visualization, text: qsTr("Audio tracks") },
+         { id: ControlListModel.LANG_BUTTON, file: "LangButton.qml", label: VLCIcons.audiosub, text: qsTr("Open subtitles") },
+         { id: ControlListModel.BOOKMARK_BUTTON, file: "BookmarkButton.qml", label: VLCIcons.bookmark, text: qsTr("Bookmark Button") },
+         { id: ControlListModel.CHAPTER_PREVIOUS_BUTTON, file: "ChapterPreviousButton.qml", label: VLCIcons.dvd_prev, text: qsTr("Previous chapter") },
+diff --git a/modules/gui/qt/player/qml/TracksListPage.qml b/modules/gui/qt/player/qml/TracksListPage.qml
+index 27b2c5c..b3f4d2e 100644
+--- a/modules/gui/qt/player/qml/TracksListPage.qml
++++ b/modules/gui/qt/player/qml/TracksListPage.qml
+@@ -41,15 +41,22 @@ RowLayout {
+     //FIXME make TrackMenuController a proper type (see TrackMenu)
+     required property QtObject trackMenuController
+ 
++    // Juxtopposed: show only the audio column (AudioTrackButton)
++    property bool audioOnly: false
++
++    property var preferredWidth: audioOnly ? VLCStyle.dp(320, VLCStyle.scale) : undefined
++
+     spacing: 0
+ 
+     focus: true
+ 
+-    onActiveFocusChanged: if (activeFocus) playbackBtn.forceActiveFocus()
++    onActiveFocusChanged: if (activeFocus) (audioOnly ? row : playbackBtn).forceActiveFocus()
+ 
+     Widgets.ButtonExt {
+         id: playbackBtn
+ 
++        visible: !root.audioOnly
++
+         text: qsTr("%1x").arg(+Player.rate.toFixed(2))
+ 
+         onPressed: {
+@@ -73,9 +80,10 @@ RowLayout {
+         Layout.fillHeight: true
+         Layout.fillWidth: true
+ 
+-        Navigation.leftItem: playbackBtn
++        Navigation.leftItem: root.audioOnly ? null : playbackBtn
+ 
+         TrackColumn {
++            visible: !root.audioOnly
+             title: qsTr("Subtitle")
+             tracksModel: Player.subtitleTracks
+             menuIcon: VLCIcons.expand
+@@ -96,6 +104,7 @@ RowLayout {
+         }
+ 
+         TrackColumn {
++            visible: !root.audioOnly
+             title: qsTr("Video Tracks")
+             tracksModel: Player.videoTracks
+             menuIcon: VLCIcons.add
+@@ -126,7 +135,7 @@ RowLayout {
+ 
+         focus: true
+ 
+-        width: row.width / 3
++        width: row.width / (root.audioOnly ? 1 : 3)
+         height: row.height
+ 
+         onActiveFocusChanged: if (activeFocus) tracksList.forceActiveFocus(focusReason)
+diff --git a/modules/gui/qt/player/qml/TracksMenu.qml b/modules/gui/qt/player/qml/TracksMenu.qml
+index a378d15..d230a83 100644
+--- a/modules/gui/qt/player/qml/TracksMenu.qml
++++ b/modules/gui/qt/player/qml/TracksMenu.qml
+@@ -31,6 +31,10 @@ T.Popup {
+     id: root
+ 
+     // Settings
++
++    // Juxtopposed: list only the audio tracks (AudioTrackButton)
++    property bool audioOnly: false
++
+     property var preferredWidth : stackView.currentItem.preferredWidth
+ 
+     width: Math.min((typeof preferredWidth !== "undefined")
+@@ -85,6 +89,7 @@ T.Popup {
+ 
+         initialItem: TracksListPage {
+             trackMenuController: trackMenuController
++            audioOnly: root.audioOnly
+         }
+ 
+         pushEnter: Transition {
+diff --git a/modules/gui/qt/player/qml/controlbarcontrols/AudioTrackButton.qml b/modules/gui/qt/player/qml/controlbarcontrols/AudioTrackButton.qml
+new file mode 100644
+index 0000000..3a96fe9
+--- /dev/null
++++ b/modules/gui/qt/player/qml/controlbarcontrols/AudioTrackButton.qml
+@@ -0,0 +1,96 @@
++/*****************************************************************************
++ * Copyright (C) 2026 VLC authors and VideoLAN
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * ( at your option ) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
++ *****************************************************************************/
++import QtQuick
++
++
++import VLC.Widgets as Widgets
++import VLC.Style
++import VLC.Player
++import VLC.Util
++
++// Juxtopposed: the "audio" button of the redesign's control bar, a
++// LangButton whose menu lists only the audio tracks.
++Widgets.IconToolButton {
++    id: root
++
++    // Proprerties
++
++    readonly property var _parentItem: {
++        if ((typeof rootPlayer !== 'undefined') && (rootPlayer !== null))
++            return rootPlayer
++        else
++            return g_mainDisplay
++    }
++
++    // Signals
++
++    signal requestLockUnlockAutoHide(bool lock)
++    signal menuOpened(var menu)
++
++    // Settings
++
++    text: VLCIcons.visualization
++
++    enabled: menuLoader.status === Loader.Ready
++
++    description: qsTr("Audio tracks")
++
++    AccessibleCompat.id: "audioTrackButton"
++
++    // Events
++
++    onClicked: menuLoader.item.open()
++
++    // Children
++
++    Loader {
++        id: menuLoader
++
++        sourceComponent: TracksMenu {
++            id: menu
++
++            parent: root._parentItem
++
++            audioOnly: true
++
++            x: parent.width - width
++            y: (parent.positionSliderY - height)
++            z: 1
++
++            focus: true
++
++            colorContext.palette: root.colorContext.palette
++
++            onOpened: {
++                root.requestLockUnlockAutoHide(true)
++                root.menuOpened(menu)
++            }
++
++            onClosed: {
++                root.requestLockUnlockAutoHide(false)
++                root.forceActiveFocus()
++                root.menuOpened(null)
++            }
++        }
++    }
++
++    function forceUnlock() {
++        if((menuLoader)&&(menuLoader.item))
++            menuLoader.item.close()
++    }
++}
+diff --git a/modules/gui/qt/player/qml/controlbarcontrols/PlaylistButton.qml b/modules/gui/qt/player/qml/controlbarcontrols/PlaylistButton.qml
+index 499cde3..2526c91 100644
+--- a/modules/gui/qt/player/qml/controlbarcontrols/PlaylistButton.qml
++++ b/modules/gui/qt/player/qml/controlbarcontrols/PlaylistButton.qml
+@@ -27,7 +27,7 @@ import VLC.Util
+ Widgets.IconToolButton {
+     id: playlistBtn
+ 
+-    text: VLCIcons.playlist
++    text: VLCIcons.lists
+     onClicked: {
+         MainCtx.playqueuePanel.visible = !MainCtx.playqueuePanel.visible
+         if (MainCtx.playqueuePanel.visible && MainCtx.playqueuePanel.docked) {
+diff --git a/modules/gui/qt/util/csdbuttonmodel.cpp b/modules/gui/qt/util/csdbuttonmodel.cpp
+index c82602b..40dc378 100644
+--- a/modules/gui/qt/util/csdbuttonmodel.cpp
++++ b/modules/gui/qt/util/csdbuttonmodel.cpp
+@@ -119,6 +119,8 @@ CSDButtonModel::CSDButtonModel(MainCtx *mainCtx, QObject *parent)
+ 
+     newButton(CSDButton::Minimize, &CSDButtonModel::minimizeButtonClicked);
+     newButton(CSDButton::MaximizeRestore, &CSDButtonModel::maximizeRestoreButtonClicked);
++    // Juxtopposed: the redesign has a fullscreen button next to maximize
++    newButton(CSDButton::Fullscreen, &CSDButtonModel::fullscreenButtonClicked);
+     newButton(CSDButton::Close, &CSDButtonModel::closeButtonClicked);
+ }
+ 
+@@ -142,6 +144,11 @@ void CSDButtonModel::maximizeRestoreButtonClicked()
+         emit m_mainCtx->requestInterfaceMaximized();
+ }
+ 
++void CSDButtonModel::fullscreenButtonClicked()
++{
++    m_mainCtx->toggleInterfaceFullScreen();
++}
++
+ void CSDButtonModel::closeButtonClicked()
+ {
+     m_mainCtx->intfMainWindow()->close();
+diff --git a/modules/gui/qt/util/csdbuttonmodel.hpp b/modules/gui/qt/util/csdbuttonmodel.hpp
+index 2126495..11d0406 100644
+--- a/modules/gui/qt/util/csdbuttonmodel.hpp
++++ b/modules/gui/qt/util/csdbuttonmodel.hpp
+@@ -42,6 +42,7 @@ public:
+         MaximizeRestore,
+         Close,
+         SystemMenu,
++        Fullscreen, // Juxtopposed: handled by Qt, not the OS caption
+ 
+         TypeCount
+     };
+@@ -109,6 +110,7 @@ public:
+ private slots:
+     void minimizeButtonClicked();
+     void maximizeRestoreButtonClicked();
++    void fullscreenButtonClicked();
+     void closeButtonClicked();
+ 
+ private:
+diff --git a/modules/gui/qt/widgets/qml/CSDThemeButtonSet.qml b/modules/gui/qt/widgets/qml/CSDThemeButtonSet.qml
+index a56c2c4..f2abc15 100644
+--- a/modules/gui/qt/widgets/qml/CSDThemeButtonSet.qml
++++ b/modules/gui/qt/widgets/qml/CSDThemeButtonSet.qml
+@@ -66,8 +66,12 @@ Rectangle {
+ 
+                 bannerHeight: root.height
+ 
++                // Juxtopposed: system themes have no fullscreen button image
++                visible: modelData.type !== CSDButton.Fullscreen
++
+                 buttonType: {
+                     switch (modelData.type) {
++                    case CSDButton.Fullscreen:
+                     case CSDButton.Minimize:
+                         return CSDThemeImage.MINIMIZE
+ 
+diff --git a/modules/gui/qt/widgets/qml/CSDWindowButtonSet.qml b/modules/gui/qt/widgets/qml/CSDWindowButtonSet.qml
+index 4d84077..7df5add 100644
+--- a/modules/gui/qt/widgets/qml/CSDWindowButtonSet.qml
++++ b/modules/gui/qt/widgets/qml/CSDWindowButtonSet.qml
+@@ -98,6 +98,13 @@ Row {
+                                 : VLCIcons.window_maximize
+                 }
+ 
++                case CSDButton.Fullscreen:
++                {
++                    return (MainCtx.intfMainWindow.visibility === Window.FullScreen)
++                            ? VLCIcons.defullscreen
++                            : VLCIcons.fullscreen
++                }
++
+                 case CSDButton.Close:
+                 {
+                     if (useWinIcons)
+-- 
+2.45.0.windows.1
+
