@@ -2,6 +2,7 @@
     "_comment": "VLC icon-font key -> Figma SVG in design/figma-assets. 'mirror' flips horizontally: Figma's generated code wraps these raw frames in rotate(180) scaleY(-1). 'new' adds a key VLC does not have. Keys not listed keep VLC's stock glyph.",
     "folder":                      {"src": "folder.svg", "mirror": true, "new": true},
     "lists":                       {"src": "lists.svg", "new": true},
+    "artist":                      {"src": "artist.svg", "new": true},
     "play":                        {"src": "play-outline.svg"},
     "play_filled":                 {"src": "play-outline.svg"},
     "pause_filled":                {"src": "pause.svg"},
