@@ -3,6 +3,7 @@
     "folder":                      {"src": "folder.svg", "mirror": true, "new": true},
     "lists":                       {"src": "lists.svg", "new": true},
     "artist":                      {"src": "artist.svg", "new": true},
+    "popout":                      {"src": "panel-popout.svg", "new": true},
     "play":                        {"src": "play-outline.svg"},
     "play_filled":                 {"src": "play-outline.svg"},
     "pause_filled":                {"src": "pause.svg"},
