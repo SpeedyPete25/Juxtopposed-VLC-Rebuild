@@ -1,0 +1,594 @@
+From c2fbe889040f6ff914ba4577612e67dec69839c1 Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Sat, 17 Oct 2026 11:21:33 +1030
+Subject: [PATCH] qt: Juxtopposed player side panel
+
+Moves the player's play queue to a side panel on the left, following the Figma "Player" frame. The panel sits between the title bar and the control bar and pushes the video stage to the right instead of covering it.
+
+- SidePanelRail: 50px icon rail with Home, Video, Music and Browse (open that library page), Play Queue (shown as current) and Add (open media dialog).
+- PlaylistPane gets a juxtStyle mode: a "Play Queue" title with more and pop out buttons, an item count row with sort and search, and a divider instead of the column header.
+- PlaylistDelegate gets a juxtStyle mode: 32px thumbnail and a single 14px line of text, without artist or duration.
+- Adds a "popout" glyph to the icon font from the design's panel-popout icon.
+---
+ modules/gui/qt/Makefile.am                    |   1 +
+ modules/gui/qt/meson.build                    |   1 +
+ modules/gui/qt/pixmaps/VLCIcons.json          |   3 +-
+ modules/gui/qt/pixmaps/VLCIcons.ttf           | Bin 20692 -> 20880 bytes
+ modules/gui/qt/pixmaps/icons/juxt/popout.svg  |  24 ++++
+ modules/gui/qt/player/qml/Player.qml          |  37 ++++--
+ modules/gui/qt/player/qml/SidePanelRail.qml   |  98 +++++++++++++++
+ .../gui/qt/playlist/qml/PlaylistDelegate.qml  |  22 +++-
+ modules/gui/qt/playlist/qml/PlaylistPane.qml  | 119 ++++++++++++++----
+ modules/gui/qt/style/VLCStyle.qml             |   3 +
+ modules/gui/qt/style/vlcicons.hpp             |   2 +
+ 11 files changed, 269 insertions(+), 41 deletions(-)
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/popout.svg
+ create mode 100644 modules/gui/qt/player/qml/SidePanelRail.qml
+
+diff --git a/modules/gui/qt/Makefile.am b/modules/gui/qt/Makefile.am
+index 80e687f..5034ddd 100644
+--- a/modules/gui/qt/Makefile.am
++++ b/modules/gui/qt/Makefile.am
+@@ -1176,6 +1176,7 @@ libqml_module_player_a_QML = \
+ 	player/qml/LyricsFlickable.qml \
+ 	player/qml/MiniPlayer.qml \
+ 	player/qml/MiniPlayerCard.qml \
++	player/qml/SidePanelRail.qml \
+ 	player/qml/PIPPlayer.qml \
+ 	player/qml/Player.qml \
+ 	player/qml/PlayerControlLayout.qml \
+diff --git a/modules/gui/qt/meson.build b/modules/gui/qt/meson.build
+index cc311d1..89a2952 100644
+--- a/modules/gui/qt/meson.build
++++ b/modules/gui/qt/meson.build
+@@ -737,6 +737,7 @@ qml_modules += {
+        'player/qml/LyricsFlickable.qml',
+        'player/qml/MiniPlayer.qml',
+        'player/qml/MiniPlayerCard.qml',
++       'player/qml/SidePanelRail.qml',
+        'player/qml/PIPPlayer.qml',
+        'player/qml/Player.qml',
+        'player/qml/PlayerControlLayout.qml',
+diff --git a/modules/gui/qt/pixmaps/VLCIcons.json b/modules/gui/qt/pixmaps/VLCIcons.json
+index 0d4ca41..b3c21e5 100644
+--- a/modules/gui/qt/pixmaps/VLCIcons.json
++++ b/modules/gui/qt/pixmaps/VLCIcons.json
+@@ -103,6 +103,7 @@
+         {"key":"ic_fluent_text_change_case_24_regular", "path": "./icons/ic_fluent_text_change_case_24_regular.svg"},
+         {"key":"folder", "path": "./icons/juxt/folder.svg"},
+         {"key":"lists", "path": "./icons/juxt/lists.svg"},
+-        {"key":"artist", "path": "./icons/juxt/artist.svg"}
++        {"key":"artist", "path": "./icons/juxt/artist.svg"},
++        {"key":"popout", "path": "./icons/juxt/popout.svg"}
+     ]
+ }
+diff --git a/modules/gui/qt/pixmaps/VLCIcons.ttf b/modules/gui/qt/pixmaps/VLCIcons.ttf
+index dd1781b831e7856349d87ea59878c227b857c5f1..3f260e9f9b83ba1cf5d30cd133172f29d9117dca 100644
+GIT binary patch
+delta 616
+zcmYjOPiWI%6n`&Cx30sErhn8eLKoLk*r6<T!Qv{2V_-Aej0t*i8q(Mtnk~3eTM)XV
+zClP|;RfHW>Hl$Pr)}!b_6h}o74?|(<LAFB#53>1EJ(!R0z3=zl@BO~K_jT{#t^3#n
+z1b`t}0T%3;nR90!JFC|K)aw)#it}k{_bodIfOW!`bxX6qzuR#Dm`Ah&daW7<k+}iD
+zZBU*oYs>cjJ}H4(CG0O(8dv6?RvrTQh%^1kG_=x0$X}t{Z`!hH8cog5avWWdp}?4F
+zRqGS0iFLvs2ya%FbnW!>^HZeVA^ghH>NY%KPf`8?;rOCv8M}#-20*^#{gA!1Ts_p4
+zUjxkARKwKhM&BAw`s!Uzzef7Utu&ogPj3@YBu5k2`}pj@rJ<>xFi2ebwts1#|M@RY
+z9CK(m3wRNAr-MJz?H+}?^g0EhH$gy-kT**KIQT}MqeXa2ce>1bEVUl6{phT7Zy0g0
+zwc^W8HyLO{n^jl^qL2d!pFk-V=^Mv`WW_W_$tEWgUNjnt^c@`)lQ||MOR*zNBzA06
+zk|#r%<TxWHGjcorBFOW>hC2`*4!HbC81LjIxloYzuF8e*2%i%0rjSYrQl4n6LJ>DG
+zJQf~s8(!Jhzr2FnO9%6kNA(IwsI_sXj3_&CB~4aUZqp#Pm6r?}t+m-88|bGew#{r7
+S!08kZ5B@*3t)k0OhwukS=#}*V
+
+delta 447
+zcmY*VT_}T57=F(8ebYje>y^=V<zi_53MET1Yb%Nif1eq<F#E99TyeQO>`UzyC0AG@
+zQ_2k`p((|UT9jN+<R=#^p5aEP_q^wMp7%WOIq$-%xLg*q5CDoX2N_yhTemAQAA1Gd
+zhh$CeE?f2Uh3o-Dgm}msP_@U*V<{l5GmPGF$c%C+3MgCDl`(Z%`}(32-224FvGJMF
+zwW^z4z%U0m>is@-q^j`kfm)VP>-YO+RimsZY+xs0@drYY$`|V<@ilRJJm^(hkL>64
+z-X=Z?s1Xf2atrldV)KL=@I70by+C`456ahq)1iZ&$tl3e56GWkb~J31(BGY5y(LWl
+zx|A&rc*r3QQO?8(7*fjOU~%I+3UWMf|Iusy%VoM*G>H*?K=g}YeP29P(3x5;Oh40u
+zkce_~G(o{Vv%*E38P>0*t7JmX6Z)QVCIQK)p}~>#b&Lv8qn|o$+_TOly2m<?lYOot
+Y*}~g`Gi2?r_ua~Eg6ID)ihJI^0WIHj;s5{u
+
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/popout.svg b/modules/gui/qt/pixmaps/icons/juxt/popout.svg
+new file mode 100644
+index 0000000..cdf12e5
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/popout.svg
+@@ -0,0 +1,24 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Frame">
++      <path
++         style="fill:#000000;stroke-linecap:round"
++         d="M 4.25,4.25 V 9.6660156 A 0.75,0.75 0 0 0 5,10.416016 0.75,0.75 0 0 0 5.75,9.6660156 V 6.8125 l 5.71875,5.71875 a 0.75,0.75 0 0 0 1.0625,0 0.75,0.75 0 0 0 0,-1.0625 L 6.8125,5.75 H 9.6660156 A 0.75,0.75 0 0 0 10.416016,5 0.75,0.75 0 0 0 9.6660156,4.25 H 5 Z m 9.5,0 A 0.75,0.75 0 0 0 13,5 0.75,0.75 0 0 0 13.75,5.75 h 1.75 1.166016 C 17.549265,5.75 18.25,6.4506679 18.25,7.3339844 V 16.666016 C 18.25,17.549253 17.549253,18.25 16.666016,18.25 H 7.3339844 C 6.4506679,18.25 5.75,17.549265 5.75,16.666016 V 15.5 13.75 A 0.75,0.75 0 0 0 5,13 0.75,0.75 0 0 0 4.25,13.75 v 1.75 1.166016 C 4.25,18.359966 5.6399808,19.75 7.3339844,19.75 H 16.666016 C 18.359978,19.75 19.75,18.359978 19.75,16.666016 V 7.3339844 C 19.75,5.6399808 18.359966,4.25 16.666016,4.25 H 15.5 Z"
++         id="Rectangle 2" />
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/player/qml/Player.qml b/modules/gui/qt/player/qml/Player.qml
+index c268fc3..d0683d2 100644
+--- a/modules/gui/qt/player/qml/Player.qml
++++ b/modules/gui/qt/player/qml/Player.qml
+@@ -181,7 +181,9 @@ FocusScope {
+         objectName: "playerSpecializationLoader"
+ 
+         anchors {
+-            left: parent.left
++            // Juxtopposed: the side panel pushes the video stage to the right
++            left: (MainCtx.hasEmbededVideo && rootPlayer._controlsUnderVideo && playlistpopup.visible) ? playlistpopup.right
++                                                                                                     : parent.left
+             right: parent.right
+             top: (MainCtx.hasEmbededVideo && rootPlayer._controlsUnderVideo) ? topBar.bottom : parent.top
+             bottom: (MainCtx.hasEmbededVideo && rootPlayer._controlsUnderVideo) ? controlBar.top : parent.bottom
+@@ -1059,10 +1061,11 @@ FocusScope {
+             top: (rootPlayer._controlsUnderVideo) ? topBar.bottom
+                                                   : parent.top
+ 
+-            right: parent.right
+-            bottom: parent.bottom
++            // Juxtopposed: side panel on the left, above the control bar
++            left: parent.left
++            bottom: (rootPlayer._controlsUnderVideo) ? controlBar.top : parent.bottom
+ 
+-            bottomMargin: parent.height - rootPlayer.positionSliderY
++            bottomMargin: (rootPlayer._controlsUnderVideo) ? 0 : parent.height - rootPlayer.positionSliderY
+         }
+ 
+         focus: false
+@@ -1126,14 +1129,18 @@ FocusScope {
+             height: playlistpopup.height
+ 
+             useAcrylic: false
++            juxtStyle: true
+             focus: true
+ 
+             wheelEnabled: true
+ 
+-            rightPadding: VLCStyle.applicationHorizontalMargin
++            // Juxtopposed: the icon rail sits in the left inset of the pane
++            leftInset: sideRail.width
++            leftPadding: sideRail.width + VLCStyle.juxtSidePanel_padding
++            rightPadding: VLCStyle.juxtSidePanel_padding
+             topPadding:  {
+                 if (rootPlayer._controlsUnderVideo)
+-                    return VLCStyle.margin_normal
++                    return VLCStyle.juxtSidePanel_padding * 2
+                 else
+                     // NOTE: We increase the padding accordingly to avoid overlapping the TopBar.
+                     return topBar.reservedHeight
+@@ -1141,7 +1148,17 @@ FocusScope {
+             bottomPadding: 0
+ 
+             background: Rectangle {
+-                color: windowTheme.bg.primary.alpha(0.8)
++                color: playlistView.colorContext.bg.primary.alpha(0.95)
++            }
++
++            SidePanelRail {
++                id: sideRail
++
++                parent: playlistView
++
++                anchors.top: parent.top
++                anchors.bottom: parent.bottom
++                anchors.left: parent.left
+             }
+ 
+             view.fadingEdge.pixelAlignedForDPR: !controlBar.visible
+@@ -1149,7 +1166,7 @@ FocusScope {
+             Navigation.parentItem: rootPlayer
+             Navigation.upItem: topBar
+             Navigation.downItem: Player.isInteractive ? toggleControlBarButton : controlBar
+-            Navigation.leftAction: closePlaylist
++            Navigation.rightAction: closePlaylist
+             Navigation.cancelAction: closePlaylist
+ 
+             function closePlaylist() {
+@@ -1171,10 +1188,10 @@ FocusScope {
+                 anchors {
+                     top: parent.top
+                     bottom: parent.bottom
+-                    left: parent.left
++                    right: parent.right
+                 }
+ 
+-                atRight: false
++                atRight: true
+                 currentWidth: playlistpopup.width
+ 
+                 maximumWidth: playlistView.maximumWidth
+diff --git a/modules/gui/qt/player/qml/SidePanelRail.qml b/modules/gui/qt/player/qml/SidePanelRail.qml
+new file mode 100644
+index 0000000..685098f
+--- /dev/null
++++ b/modules/gui/qt/player/qml/SidePanelRail.qml
+@@ -0,0 +1,98 @@
++/*****************************************************************************
++ * Copyright (C) 2026 VLC authors and VideoLAN
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * ( at your option ) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
++ *****************************************************************************/
++import QtQuick
++
++import VLC.MainInterface
++import VLC.Style
++import VLC.Widgets as Widgets
++import VLC.Dialogs
++import VLC.Util
++
++// Juxtopposed: the icon rail on the left of the player side panel. The
++// library sections open in the main window; the play queue is the panel
++// itself, so its button is shown as the current one.
++Rectangle {
++    id: root
++
++    implicitWidth: VLCStyle.juxtSideRail_width
++
++    color: theme.bg.secondary
++
++    readonly property ColorContext colorContext: ColorContext {
++        id: theme
++        colorSet: ColorContext.Window
++    }
++
++    function _openLibrary(uri) {
++        History.push(uri)
++        MainCtx.playerView = false
++    }
++
++    Column {
++        anchors.top: parent.top
++        anchors.horizontalCenter: parent.horizontalCenter
++        anchors.topMargin: VLCStyle.dp(8, VLCStyle.scale)
++
++        spacing: VLCStyle.dp(14, VLCStyle.scale)
++
++        RailButton {
++            text: VLCIcons.home
++            description: qsTr("Home")
++            onClicked: root._openLibrary(["home"])
++        }
++
++        RailButton {
++            visible: MainCtx.mediaLibraryAvailable
++            text: VLCIcons.topbar_video
++            description: qsTr("Video")
++            onClicked: root._openLibrary(["video"])
++        }
++
++        RailButton {
++            visible: MainCtx.mediaLibraryAvailable
++            text: VLCIcons.topbar_music
++            description: qsTr("Music")
++            onClicked: root._openLibrary(["music"])
++        }
++
++        RailButton {
++            text: VLCIcons.topbar_network
++            description: qsTr("Browse")
++            onClicked: root._openLibrary(["network"])
++        }
++
++        RailButton {
++            text: VLCIcons.playlist
++            description: qsTr("Play Queue")
++            checked: true
++        }
++
++        RailButton {
++            text: VLCIcons.add
++            description: qsTr("Open media")
++            onClicked: DialogsProvider.simpleOpenDialog()
++        }
++    }
++
++    component RailButton: Widgets.IconToolButton {
++        width: VLCStyle.dp(30, VLCStyle.scale)
++        height: VLCStyle.dp(30, VLCStyle.scale)
++
++        font.pixelSize: VLCStyle.icon_normal
++    }
++}
+diff --git a/modules/gui/qt/playlist/qml/PlaylistDelegate.qml b/modules/gui/qt/playlist/qml/PlaylistDelegate.qml
+index 74b11b8..1cbcdad 100644
+--- a/modules/gui/qt/playlist/qml/PlaylistDelegate.qml
++++ b/modules/gui/qt/playlist/qml/PlaylistDelegate.qml
+@@ -74,11 +74,15 @@ T.Control {
+     // Optional, but required to drop a drag
+     property alias acceptDrop: dropAreaLayout.acceptDrop
+ 
++    // Juxtopposed: compact rows of the player side panel (32px thumbnail,
++    // a single line of text, no duration)
++    property bool juxtStyle: false
++
+     // Settings
+ 
+     hoverEnabled: true
+ 
+-    verticalPadding: VLCStyle.margin_xxxsmall
++    verticalPadding: juxtStyle ? VLCStyle.dp(5, VLCStyle.scale) : VLCStyle.margin_xxxsmall
+ 
+     leftPadding: VLCStyle.margin_normal
+ 
+@@ -169,8 +173,8 @@ T.Control {
+         Item {
+             id: artworkItem
+ 
+-            Layout.preferredHeight: VLCStyle.icon_playlistArt
+-            Layout.preferredWidth: VLCStyle.icon_playlistArt
++            Layout.preferredHeight: delegate.juxtStyle ? VLCStyle.juxtSidePanel_thumb : VLCStyle.icon_playlistArt
++            Layout.preferredWidth: delegate.juxtStyle ? VLCStyle.juxtSidePanel_thumb : VLCStyle.icon_playlistArt
+             Layout.alignment: Qt.AlignVCenter
+ 
+             Accessible.role: Accessible.Graphic
+@@ -194,7 +198,7 @@ T.Control {
+                 visible: !statusIcon.visible
+                 asynchronous: true
+                 opacity: (status === Image.Ready ? 1.0 : 0.0)
+-                radius: VLCStyle.listAlbumCover_radius
++                radius: delegate.juxtStyle ? VLCStyle.dp(2, VLCStyle.scale) : VLCStyle.listAlbumCover_radius
+                 backgroundColor: theme.bg.primary
+ 
+                 sourceSize: Qt.size(width * eDPR, height * eDPR)
+@@ -274,7 +278,7 @@ T.Control {
+ 
+             Layout.fillWidth: true
+             Layout.fillHeight: true
+-            Layout.leftMargin: VLCStyle.margin_large
++            Layout.leftMargin: delegate.juxtStyle ? VLCStyle.dp(10, VLCStyle.scale) : VLCStyle.margin_large
+             spacing: VLCStyle.margin_xxxsmall
+ 
+             Widgets.ListLabel {
+@@ -282,7 +286,9 @@ T.Control {
+ 
+                 Layout.fillWidth: true
+ 
+-                font.weight: delegate.isCurrent ? Font.Bold : Font.DemiBold
++                font.pixelSize: delegate.juxtStyle ? VLCStyle.fontSize_large : VLCStyle.fontSize_normal
++                font.weight: delegate.juxtStyle ? (delegate.isCurrent ? Font.DemiBold : Font.Normal)
++                                                : (delegate.isCurrent ? Font.Bold : Font.DemiBold)
+                 text: delegate.title || qsTr("Unknown Title")
+                 color: theme.fg.primary
+             }
+@@ -292,6 +298,8 @@ T.Control {
+ 
+                 Layout.fillWidth: true
+ 
++                visible: !delegate.juxtStyle
++
+                 text: delegate.artist || (delegate.title.length === 0 ? delegate.url : "")
+                 color: theme.fg.primary
+             }
+@@ -300,6 +308,8 @@ T.Control {
+         Widgets.ListLabel {
+             id: textDuration
+ 
++            visible: !delegate.juxtStyle
++
+             text: delegate.duration.formatHMS()
+             horizontalAlignment: Text.AlignHCenter
+             verticalAlignment: Text.AlignVCenter
+diff --git a/modules/gui/qt/playlist/qml/PlaylistPane.qml b/modules/gui/qt/playlist/qml/PlaylistPane.qml
+index 9515b78..25db5a8 100644
+--- a/modules/gui/qt/playlist/qml/PlaylistPane.qml
++++ b/modules/gui/qt/playlist/qml/PlaylistPane.qml
+@@ -38,6 +38,10 @@ T.Pane {
+ 
+     property bool useAcrylic: true
+ 
++    // Juxtopposed: the player side panel's header (title with more and pop out
++    // buttons, then the item count with sort and search) and compact rows
++    property bool juxtStyle: false
++
+     readonly property real minimumWidth: contentItem.Layout.minimumWidth +
+                                          leftPadding +
+                                          rightPadding +
+@@ -147,8 +151,32 @@ T.Pane {
+ 
+                     text: qsTr("Play Queue")
+                     color: theme.fg.primary
+-                    font.weight: Font.Bold
+-                    font.pixelSize: VLCStyle.dp(24, VLCStyle.scale)
++                    font.weight: root.juxtStyle ? Font.Normal : Font.Bold
++                    font.pixelSize: VLCStyle.dp(root.juxtStyle ? 16 : 24, VLCStyle.scale)
++                }
++
++                Widgets.IconToolButton {
++                    id: moreButton
++
++                    visible: root.juxtStyle
++
++                    font.pixelSize: VLCStyle.icon_normal
++                    text: VLCIcons.more
++                    description: qsTr("More")
++
++                    onClicked: contextMenu.popup(-1, mapToGlobal(0, height))
++                }
++
++                Widgets.IconToolButton {
++                    id: popoutButton
++
++                    visible: root.juxtStyle
++
++                    font.pixelSize: VLCStyle.icon_normal
++                    text: VLCIcons.popout
++                    description: qsTr("Open in a separate window")
++
++                    onClicked: MainCtx.playqueuePanel.docked = false
+                 }
+ 
+                 Widgets.SortControl {
+@@ -226,30 +254,58 @@ T.Pane {
+                 }
+             }
+ 
+-            Widgets.CaptionLabel {
+-                color: theme.fg.secondary
+-                visible: listView.count !== 0
+-                text: {
+-                    if (listView.count <= 0)
+-                        return "" // Not visible otherwise
+-
+-                    let duration
+-                    const model = listView.model
+-                    if (model instanceof PlaylistListModel) {
+-                        duration = model.duration
+-                    } else {
+-                        // Proxy model, we need to use `QAbstractItemModel` api:
++            RowLayout {
++                id: countRow
+ 
+-                        duration = []
+-                        for (let i = 0; i < listView.count; ++i) {
+-                            const itemDuration = model.data(model.index(i, 0), PlaylistListModel.DurationRole)
+-                            console.assert(itemDuration !== undefined && itemDuration !== null) // typeof `vlcDuration`
+-                            duration.push(itemDuration)
+-                        }
+-                        duration = duration[0].sum(duration)
++                anchors.left: parent.left
++                anchors.right: parent.right
++
++                visible: root.juxtStyle || (listView.count !== 0)
++
++                spacing: VLCStyle.margin_normal
++
++                // Juxtopposed: sort and search sit next to the item count
++                Component.onCompleted: {
++                    if (root.juxtStyle) {
++                        sort.parent = countRow
++                        searchBox.parent = countRow
+                     }
++                }
++
++                Widgets.CaptionLabel {
++                    id: countLabel
++
++                    Layout.fillWidth: true
++                    Layout.minimumWidth: implicitWidth
++
++                    color: theme.fg.secondary
++                    visible: listView.count !== 0
++                    font.pixelSize: root.juxtStyle ? VLCStyle.fontSize_large : VLCStyle.fontSize_normal
++                    text: {
++                        if (listView.count <= 0)
++                            return "" // Not visible otherwise
++
++                        if (root.juxtStyle)
++                            return qsTr("%1 item", "%1 items", listView.count).arg(listView.count)
++
++                        let duration
++                        const model = listView.model
++                        if (model instanceof PlaylistListModel) {
++                            duration = model.duration
++                        } else {
++                            // Proxy model, we need to use `QAbstractItemModel` api:
++
++                            duration = []
++                            for (let i = 0; i < listView.count; ++i) {
++                                const itemDuration = model.data(model.index(i, 0), PlaylistListModel.DurationRole)
++                                console.assert(itemDuration !== undefined && itemDuration !== null) // typeof `vlcDuration`
++                                duration.push(itemDuration)
++                            }
++                            duration = duration[0].sum(duration)
++                        }
+ 
+-                    return qsTr("%1 elements, %2").arg(listView.count).arg(duration.formatLong())
++                        return qsTr("%1 elements, %2").arg(listView.count).arg(duration.formatLong())
++                    }
+                 }
+             }
+         }
+@@ -260,8 +316,21 @@ T.Pane {
+             implicitHeight: VLCStyle.margin_xsmall
+         }
+ 
++        Rectangle {
++            // Juxtopposed: divider between the header and the list
++            visible: root.juxtStyle
++
++            Layout.fillWidth: true
++            Layout.leftMargin: VLCStyle.margin_normal
++            Layout.rightMargin: VLCStyle.margin_normal
++            Layout.bottomMargin: VLCStyle.margin_normal
++
++            implicitHeight: VLCStyle.border
++            color: theme.separator
++        }
++
+         RowLayout {
+-            visible: listView.count !== 0
++            visible: (listView.count !== 0) && !root.juxtStyle
+ 
+             Layout.fillHeight: false
+             Layout.leftMargin: VLCStyle.margin_normal
+@@ -500,6 +569,8 @@ T.Pane {
+             delegate: PlaylistDelegate {
+                 id: delegate
+ 
++                juxtStyle: root.juxtStyle
++
+                 width: listView.contentWidth
+                 rightPadding: Math.max(listView.T.ScrollBar.vertical.width, VLCStyle.margin_normal)
+ 
+diff --git a/modules/gui/qt/style/VLCStyle.qml b/modules/gui/qt/style/VLCStyle.qml
+index 2111485..d3e5e4a 100644
+--- a/modules/gui/qt/style/VLCStyle.qml
++++ b/modules/gui/qt/style/VLCStyle.qml
+@@ -346,6 +346,9 @@ QtObject {
+     readonly property int juxtMiniCard_margin: MainCtx.dp(12, scale)
+     readonly property int juxtMiniCard_textInset: MainCtx.dp(4, scale)
+     readonly property real juxtMiniCard_mediaRadius: MainCtx.dp(6, scale)
++    readonly property int juxtSideRail_width: MainCtx.dp(50, scale)
++    readonly property int juxtSidePanel_thumb: MainCtx.dp(32, scale)
++    readonly property int juxtSidePanel_padding: MainCtx.dp(10, scale)
+ 
+     // Scroll bar (size means width or height, depending on the orientation):
+     readonly property real scrollBarInteractingSize: MainCtx.dp(8, scale)
+diff --git a/modules/gui/qt/style/vlcicons.hpp b/modules/gui/qt/style/vlcicons.hpp
+index 34b45a2..d254ebd 100644
+--- a/modules/gui/qt/style/vlcicons.hpp
++++ b/modules/gui/qt/style/vlcicons.hpp
+@@ -113,6 +113,7 @@ class VLCIcons : public QObject {
+     Q_PROPERTY(QChar folder MEMBER folder CONSTANT FINAL)
+     Q_PROPERTY(QChar lists MEMBER lists CONSTANT FINAL)
+     Q_PROPERTY(QChar artist MEMBER artist CONSTANT FINAL)
++    Q_PROPERTY(QChar popout MEMBER popout CONSTANT FINAL)
+ 
+ 
+ public:
+@@ -222,6 +223,7 @@ public:
+     static constexpr inline QChar folder{ u'\ue060' };
+     static constexpr inline QChar lists{ u'\ue061' };
+     static constexpr inline QChar artist{ u'\ue062' };
++    static constexpr inline QChar popout{ u'\ue063' };
+ 
+ };
+ 
+-- 
+2.45.0.windows.1
+

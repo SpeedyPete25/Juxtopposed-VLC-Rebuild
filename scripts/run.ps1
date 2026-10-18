@@ -1,14 +1,14 @@
 # Launch the rebuilt VLC in portable mode (profile in dist\vlc\portable, so an
 # installed VLC's settings are neither used nor modified), optionally capture
 # the window and print Qt/QML warnings from the log.
-#   powershell -File scripts/run.ps1 [-Media file] [-Shot out.png] [-Wait 7] [-Args ...]
+#   powershell -File scripts/run.ps1 [-Media file] [-Shot out.png] [-Wait 7] [-Extra arg,...]
 param(
     [string]$Media = "",
     [string]$Shot = "",
     [int]$Wait = 7,
     [int]$Width = 1600,
     [int]$Height = 900,
-    [string[]]$Args = @(),
+    [string[]]$Extra = @(),   # extra VLC arguments ($Args would clash with PowerShell's $args)
     [switch]$KeepProfile
 )
 
@@ -27,7 +27,7 @@ New-Item -ItemType Directory -Force $profileDir | Out-Null
 Remove-Item $log -ErrorAction SilentlyContinue
 
 $vlcArgs = @("--no-qt-privacy-ask", "--no-qt-updates-notif", "--verbose=2",
-             "--file-logging", "--logfile=$log") + $Args
+             "--file-logging", "--logfile=$log") + $Extra
 if ($Media) { $vlcArgs += $Media }
 Start-Process -FilePath (Join-Path $vlcDir "vlc.exe") -ArgumentList $vlcArgs | Out-Null
 Start-Sleep -Seconds $Wait

@@ -32,9 +32,10 @@ control bar (pill play button, inline seek bar, gradient volume), rounded
 video stage, library title bar / side bar / inset content panel, fullscreen
 window button, audio tracks button, music player view (rounded cover,
 "title - artist" caption, skip buttons in the control bar), floating mini
-player card in the library (video or cover, seek line, folder and artist).
+player card in the library (video or cover, seek line, folder and artist),
+player side panel (icon rail and play queue on the left of the video).
 
 Not yet: library page headers (breadcrumbs, item count, search field),
-library side panel inside the player, settings window, onboarding,
+library browsing inside the player side panel, settings window, onboarding,
 dialogs, context menus, light theme, restyled tracks popup, remaining
 icons (stop, repeat, shuffle, …).
