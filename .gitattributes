@@ -1,0 +1,5 @@
+# Patches are applied with git am and the scripts run in bash/Docker, so they
+# must keep LF line endings even on Windows clones with core.autocrlf=true.
+*.patch -text
+*.sh text eol=lf
+Dockerfile text eol=lf
