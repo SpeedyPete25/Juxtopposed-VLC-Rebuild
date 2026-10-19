@@ -1,0 +1,123 @@
+From 3c796bfd9176bb12c87d740a3823e3bdf3999746 Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Mon, 19 Oct 2026 22:00:53 +1030
+Subject: [PATCH] Add patch 0005 for the restyled tracks popup
+
+The audio and subtitle popups become a floating rounded card in the design's menu style, anchored above the right end of the control bar.
+---
+ modules/gui/qt/player/qml/TracksListPage.qml  |  5 +++-
+ modules/gui/qt/player/qml/TracksMenu.qml      | 23 +++++++++----------
+ .../controlbarcontrols/AudioTrackButton.qml   |  5 ++--
+ .../qml/controlbarcontrols/LangButton.qml     |  5 ++--
+ modules/gui/qt/style/VLCStyle.qml             |  3 +++
+ 5 files changed, 24 insertions(+), 17 deletions(-)
+
+diff --git a/modules/gui/qt/player/qml/TracksListPage.qml b/modules/gui/qt/player/qml/TracksListPage.qml
+index b3f4d2e..8e245c7 100644
+--- a/modules/gui/qt/player/qml/TracksListPage.qml
++++ b/modules/gui/qt/player/qml/TracksListPage.qml
+@@ -187,7 +187,10 @@ RowLayout {
+                            - parent.rightPadding
+ 
+                     text: tracksListContainer.title
+-                    color: theme.fg.primary
++                    color: theme.fg.secondary
++                    // Juxtopposed: quiet 14px section title, like the design's menus
++                    font.pixelSize: VLCStyle.fontSize_large
++                    font.weight: Font.Normal
+                 }
+ 
+                 Widgets.IconTrackButton {
+diff --git a/modules/gui/qt/player/qml/TracksMenu.qml b/modules/gui/qt/player/qml/TracksMenu.qml
+index d230a83..14c111a 100644
+--- a/modules/gui/qt/player/qml/TracksMenu.qml
++++ b/modules/gui/qt/player/qml/TracksMenu.qml
+@@ -37,9 +37,12 @@ T.Popup {
+ 
+     property var preferredWidth : stackView.currentItem.preferredWidth
+ 
++    // Juxtopposed: a floating card rather than a full width strip
+     width: Math.min((typeof preferredWidth !== "undefined")
+-                          ? preferredWidth : Number.MAX_VALUE
+-                    , root.parent.width)
++                          ? preferredWidth : VLCStyle.juxtMenu_width
++                    , root.parent.width - 2 * VLCStyle.juxtMenu_margin)
++
++    padding: VLCStyle.dp(4, VLCStyle.scale)
+ 
+     height: VLCStyle.dp(296, VLCStyle.scale)
+ 
+@@ -59,18 +62,14 @@ T.Popup {
+         colorSet: ColorContext.Window
+     }
+ 
++    // Juxtopposed: the design's menu card (#191919, 1px border, rounded)
+     background: Rectangle {
+-        // NOTE: The opacity should be stronger on a light background for readability.
+-        color: popupTheme.bg.primary.alpha(popupTheme.palette.isDark ? 0.8 : 0.96)
+-
+-        Rectangle {
+-            anchors.left: parent.left
+-            anchors.right: parent.right
++        color: popupTheme.bg.secondary
++        radius: VLCStyle.juxtMenu_radius
++        border.width: VLCStyle.border
++        border.color: popupTheme.border
+ 
+-            height: VLCStyle.margin_xxxsmall
+-
+-            color: popupTheme.border
+-        }
++        Widgets.DefaultShadow { }
+     }
+ 
+     contentItem: T.StackView {
+diff --git a/modules/gui/qt/player/qml/controlbarcontrols/AudioTrackButton.qml b/modules/gui/qt/player/qml/controlbarcontrols/AudioTrackButton.qml
+index 3a96fe9..ec24352 100644
+--- a/modules/gui/qt/player/qml/controlbarcontrols/AudioTrackButton.qml
++++ b/modules/gui/qt/player/qml/controlbarcontrols/AudioTrackButton.qml
+@@ -68,8 +68,9 @@ Widgets.IconToolButton {
+ 
+             audioOnly: true
+ 
+-            x: parent.width - width
+-            y: (parent.positionSliderY - height)
++            // Juxtopposed: floating above the right end of the control bar
++            x: parent.width - width - VLCStyle.juxtMenu_margin
++            y: (parent.positionSliderY - height - VLCStyle.juxtMenu_margin * 2)
+             z: 1
+ 
+             focus: true
+diff --git a/modules/gui/qt/player/qml/controlbarcontrols/LangButton.qml b/modules/gui/qt/player/qml/controlbarcontrols/LangButton.qml
+index d858c7e..57417b5 100644
+--- a/modules/gui/qt/player/qml/controlbarcontrols/LangButton.qml
++++ b/modules/gui/qt/player/qml/controlbarcontrols/LangButton.qml
+@@ -65,8 +65,9 @@ Widgets.IconToolButton {
+ 
+             parent: root._parentItem
+ 
+-            x: 0
+-            y: (parent.positionSliderY - height)
++            // Juxtopposed: floating above the right end of the control bar
++            x: parent.width - width - VLCStyle.juxtMenu_margin
++            y: (parent.positionSliderY - height - VLCStyle.juxtMenu_margin * 2)
+             z: 1
+ 
+             focus: true
+diff --git a/modules/gui/qt/style/VLCStyle.qml b/modules/gui/qt/style/VLCStyle.qml
+index d3e5e4a..2fe9282 100644
+--- a/modules/gui/qt/style/VLCStyle.qml
++++ b/modules/gui/qt/style/VLCStyle.qml
+@@ -349,6 +349,9 @@ QtObject {
+     readonly property int juxtSideRail_width: MainCtx.dp(50, scale)
+     readonly property int juxtSidePanel_thumb: MainCtx.dp(32, scale)
+     readonly property int juxtSidePanel_padding: MainCtx.dp(10, scale)
++    readonly property int juxtMenu_width: MainCtx.dp(720, scale)
++    readonly property real juxtMenu_radius: MainCtx.dp(8, scale)
++    readonly property int juxtMenu_margin: MainCtx.dp(12, scale)
+ 
+     // Scroll bar (size means width or height, depending on the orientation):
+     readonly property real scrollBarInteractingSize: MainCtx.dp(8, scale)
+-- 
+2.45.0.windows.1
+
