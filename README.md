@@ -43,9 +43,10 @@ video stage, library title bar / side bar / inset content panel, fullscreen
 window button, audio tracks button, music player view (rounded cover,
 "title - artist" caption, skip buttons in the control bar), floating mini
 player card in the library (video or cover, seek line, folder and artist),
-player side panel (icon rail and play queue on the left of the video).
+player side panel (icon rail and play queue on the left of the video),
+tracks popup as a floating menu card, player icons (stop, skip forward,
+repeat, shuffle, mute, record, snapshot, info, chevrons, bookmark).
 
 Not yet: library page headers (breadcrumbs, item count, search field),
 library browsing inside the player side panel, settings window, onboarding,
-dialogs, context menus, light theme, restyled tracks popup, remaining
-icons (stop, repeat, shuffle, …).
+dialogs, context menus, light theme, library icons.

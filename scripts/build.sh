@@ -18,6 +18,12 @@ if command -v powershell >/dev/null; then
     Where-Object { \$_.Path -like '$(cygpath -w "$ROOT/dist/vlc")*' } | Stop-Process -Force" || true
 fi
 
+# A VLC that hung while exiting can keep its DLLs locked even though it can no
+# longer be stopped, which makes the copy below fail. Renaming still works, so
+# move the old build aside and drop earlier ones once they are unlocked.
+rm -rf "$ROOT"/dist/.vlc-old-* 2>/dev/null || true
+[ -d "$ROOT/dist/vlc" ] && mv "$ROOT/dist/vlc" "$ROOT/dist/.vlc-old-$(date +%s)"
+
 # Prebuilt contribs (Qt, ffmpeg, ...) published by VideoLAN's CI, keyed by the
 # last commit touching contrib/. The container has no .git, so resolve it here.
 CONTRIB_SHA="$(cd "$ROOT/vlc" && extras/ci/get-contrib-sha.sh win64)"

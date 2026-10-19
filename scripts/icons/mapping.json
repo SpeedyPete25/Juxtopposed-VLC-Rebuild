@@ -41,5 +41,20 @@
     "audiosub":                    {"src": "subtitles.svg"},
     "visualization":               {"src": "audio.svg"},
     "effect_filter":               {"src": "playback-settings.svg"},
-    "album_cover":                 {"src": "album.svg", "mirror": true}
+    "album_cover":                 {"src": "album.svg", "mirror": true},
+    "stop":                        {"src": "stop.svg"},
+    "skip_for":                    {"src": "forward-10.svg"},
+    "repeat_all":                  {"src": "repeat.svg"},
+    "shuffle":                     {"src": "shuffle.svg"},
+    "volume_muted":                {"src": "volume-muted.svg"},
+    "volume_zero":                 {"src": "volume-muted.svg"},
+    "record":                      {"src": "record.svg"},
+    "snapshot":                    {"src": "snapshot.svg"},
+    "info":                        {"src": "info.svg"},
+    "chevron_down":                {"src": "chevron-down.svg"},
+    "ic_fluent_chevron_down_24":   {"src": "chevron-down.svg"},
+    "expand":                      {"src": "chevron-down.svg"},
+    "chevron_up":                  {"src": "chevron-up.svg"},
+    "ic_fluent_chevron_up_24":     {"src": "chevron-up.svg"},
+    "bookmark":                    {"src": "bookmark.svg"}
 }
