@@ -45,8 +45,8 @@ window button, audio tracks button, music player view (rounded cover,
 player card in the library (video or cover, seek line, folder and artist),
 player side panel (icon rail and play queue on the left of the video),
 tracks popup as a floating menu card, player icons (stop, skip forward,
-repeat, shuffle, mute, record, snapshot, info, chevrons, bookmark).
+repeat, shuffle, mute, record, snapshot, info, chevrons, bookmark), library
+page headers (back/forward, breadcrumb, item count, sort, view, inline search).
 
-Not yet: library page headers (breadcrumbs, item count, search field),
-library browsing inside the player side panel, settings window, onboarding,
-dialogs, context menus, light theme, library icons.
+Not yet: library browsing inside the player side panel, settings window,
+onboarding, dialogs, context menus, light theme, library icons.
