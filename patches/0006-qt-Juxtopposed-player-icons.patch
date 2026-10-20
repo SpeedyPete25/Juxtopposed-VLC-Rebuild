@@ -1,0 +1,837 @@
+From 1da1accc33cecb3ce4fc2be77f0406811854985a Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Mon, 19 Oct 2026 22:13:10 +1030
+Subject: [PATCH] qt: Juxtopposed player icons
+
+Replaces the remaining stock player icons (stop, skip forward, repeat, shuffle, mute, record, snapshot, info, chevrons, bookmark) with the design's, and hides the column divider in the audio-only tracks popup.
+---
+ modules/gui/qt/pixmaps/VLCIcons.json          |  30 ++++++-------
+ modules/gui/qt/pixmaps/VLCIcons.ttf           | Bin 20880 -> 21152 bytes
+ .../gui/qt/pixmaps/icons/juxt/bookmark.svg    |  38 ++++++++++++++++
+ .../qt/pixmaps/icons/juxt/chevron_down.svg    |  30 +++++++++++++
+ .../gui/qt/pixmaps/icons/juxt/chevron_up.svg  |  30 +++++++++++++
+ modules/gui/qt/pixmaps/icons/juxt/expand.svg  |  30 +++++++++++++
+ .../icons/juxt/ic_fluent_chevron_down_24.svg  |  30 +++++++++++++
+ .../icons/juxt/ic_fluent_chevron_up_24.svg    |  30 +++++++++++++
+ modules/gui/qt/pixmaps/icons/juxt/info.svg    |  38 ++++++++++++++++
+ modules/gui/qt/pixmaps/icons/juxt/record.svg  |  41 ++++++++++++++++++
+ .../gui/qt/pixmaps/icons/juxt/repeat_all.svg  |  34 +++++++++++++++
+ modules/gui/qt/pixmaps/icons/juxt/shuffle.svg |  34 +++++++++++++++
+ .../gui/qt/pixmaps/icons/juxt/skip_for.svg    |  34 +++++++++++++++
+ .../gui/qt/pixmaps/icons/juxt/snapshot.svg    |  34 +++++++++++++++
+ modules/gui/qt/pixmaps/icons/juxt/stop.svg    |  37 ++++++++++++++++
+ .../qt/pixmaps/icons/juxt/volume_muted.svg    |  34 +++++++++++++++
+ .../gui/qt/pixmaps/icons/juxt/volume_zero.svg |  34 +++++++++++++++
+ modules/gui/qt/player/qml/TracksListPage.qml  |   3 ++
+ 18 files changed, 526 insertions(+), 15 deletions(-)
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/bookmark.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/chevron_down.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/chevron_up.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/expand.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/ic_fluent_chevron_down_24.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/ic_fluent_chevron_up_24.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/info.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/record.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/repeat_all.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/shuffle.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/skip_for.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/snapshot.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/stop.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/volume_muted.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/volume_zero.svg
+
+diff --git a/modules/gui/qt/pixmaps/VLCIcons.json b/modules/gui/qt/pixmaps/VLCIcons.json
+index b3c21e5..1618f05 100644
+--- a/modules/gui/qt/pixmaps/VLCIcons.json
++++ b/modules/gui/qt/pixmaps/VLCIcons.json
+@@ -14,7 +14,7 @@
+         {"key":"back", "path": "./icons/juxt/back.svg"},
+         {"key":"breadcrumb_sep", "path": "./icons/breadcrumb_sep.svg"},
+         {"key":"breadcrumb_prev", "path": "./icons/juxt/breadcrumb_prev.svg"},
+-        {"key":"bookmark", "path": "./icons/ic_fluent_bookmark.svg"},
++        {"key":"bookmark", "path": "./icons/juxt/bookmark.svg"},
+         {"key":"check", "path": "./icons/check.svg"},
+         {"key":"clear", "path": "./icons/juxt/clear.svg"},
+         {"key":"close", "path": "./icons/juxt/close.svg"},
+@@ -29,7 +29,7 @@
+         {"key":"ellipsis", "path": "./icons/juxt/ellipsis.svg"},
+         {"key":"enqueue", "path": "./icons/ic_playlist_add.svg"},
+         {"key":"expand_inverted", "path": "./icons/expand_inverted.svg"},
+-        {"key":"expand", "path": "./icons/expand.svg"},
++        {"key":"expand", "path": "./icons/juxt/expand.svg"},
+         {"key":"faster", "path": "./icons/ic_fluent_fast_forward.svg"},
+         {"key":"next_frame", "path": "./icons/ic_fluent_next_frame.svg"},
+         {"key":"previous_frame", "path": "./icons/ic_fluent_previous_frame.svg"},
+@@ -37,7 +37,7 @@
+         {"key":"grid", "path": "./icons/ic_fluent_grid.svg"},
+         {"key":"history", "path": "./icons/juxt/history.svg"},
+         {"key":"home", "path": "./icons/juxt/home.svg"},
+-        {"key":"info", "path": "./icons/ic_fluent_info.svg"},
++        {"key":"info", "path": "./icons/juxt/info.svg"},
+         {"key":"list", "path": "./icons/juxt/list.svg"},
+         {"key":"more", "path": "./icons/juxt/more.svg"},
+         {"key":"next", "path": "./icons/juxt/next.svg"},
+@@ -46,30 +46,30 @@
+         {"key":"play_filled", "path": "./icons/juxt/play_filled.svg"},
+         {"key":"play", "path": "./icons/juxt/play.svg"},
+         {"key":"ic_fluent_arrow_move", "path": "./icons/ic_fluent_arrow_move.svg"},
+-        {"key":"ic_fluent_chevron_down_24", "path": "./icons/ic_fluent_chevron_down_24.svg"},
++        {"key":"ic_fluent_chevron_down_24", "path": "./icons/juxt/ic_fluent_chevron_down_24.svg"},
+         {"key":"ic_fluent_chevron_left_24", "path": "./icons/juxt/ic_fluent_chevron_left_24.svg"},
+         {"key":"ic_fluent_chevron_right_24", "path": "./icons/juxt/ic_fluent_chevron_right_24.svg"},
+-        {"key":"ic_fluent_chevron_up_24", "path": "./icons/ic_fluent_chevron_up_24.svg"},
++        {"key":"ic_fluent_chevron_up_24", "path": "./icons/juxt/ic_fluent_chevron_up_24.svg"},
+         {"key":"panel_left", "path": "./icons/juxt/panel_left.svg"},
+         {"key":"play_reverse", "path": "./icons/ic_fluent_play_reverse_filled.svg"},
+         {"key":"playlist", "path": "./icons/juxt/playlist.svg"},
+         {"key":"playlist_clear", "path": "./icons/ic_playlist_clear.svg"},
+         {"key":"previous", "path": "./icons/juxt/previous.svg"},
+         {"key":"profile_new", "path": "./icons/profile_new.svg"},
+-        {"key":"record", "path": "./icons/ic_fluent_record.svg"},
++        {"key":"record", "path": "./icons/juxt/record.svg"},
+         {"key":"remove", "path": "./icons/remove.svg"},
+         {"key":"renderer", "path": "./icons/ic_fluent_cast.svg"},
+-        {"key":"repeat_all", "path": "./icons/ic_fluent_arrow_repeat_all.svg"},
++        {"key":"repeat_all", "path": "./icons/juxt/repeat_all.svg"},
+         {"key":"repeat_one", "path": "./icons/ic_fluent_arrow_repeat_1.svg"},
+         {"key":"search", "path": "./icons/juxt/search.svg"},
+         {"key":"settings", "path": "./icons/juxt/settings.svg"},
+-        {"key":"shuffle", "path": "./icons/ic_fluent_arrow_shuffle.svg"},
++        {"key":"shuffle", "path": "./icons/juxt/shuffle.svg"},
+         {"key":"skip_back", "path": "./icons/juxt/skip_back.svg"},
+-        {"key":"skip_for", "path": "./icons/ic_fluent_skip_forward_10.svg"},
++        {"key":"skip_for", "path": "./icons/juxt/skip_for.svg"},
+         {"key":"slower", "path": "./icons/ic_fluent_rewind.svg"},
+-        {"key":"snapshot", "path": "./icons/ic_fluent_camera.svg"},
++        {"key":"snapshot", "path": "./icons/juxt/snapshot.svg"},
+         {"key":"space", "path": "./icons/ic_fluent_spacebar.svg"},
+-        {"key":"stop", "path": "./icons/ic_fluent_stop.svg"},
++        {"key":"stop", "path": "./icons/juxt/stop.svg"},
+         {"key":"stream", "path": "./icons/juxt/stream.svg"},
+         {"key":"time", "path": "./icons/ic_fluent_clock.svg"},
+         {"key":"topbar_discover", "path": "./icons/ic_fluent_globe.svg"},
+@@ -77,8 +77,8 @@
+         {"key":"topbar_network", "path": "./icons/juxt/topbar_network.svg"},
+         {"key":"topbar_sort", "path": "./icons/juxt/topbar_sort.svg"},
+         {"key":"topbar_video", "path": "./icons/juxt/topbar_video.svg"},
+-        {"key":"chevron_up", "path": "./icons/ic_fluent_chevron_up.svg"},
+-        {"key":"chevron_down", "path": "./icons/ic_fluent_chevron_down.svg"},
++        {"key":"chevron_up", "path": "./icons/juxt/chevron_up.svg"},
++        {"key":"chevron_down", "path": "./icons/juxt/chevron_down.svg"},
+         {"key":"tv", "path": "./icons/ic_fluent_tv.svg"},
+         {"key":"tvtelx", "path": "./icons/ic_tvtelx.svg"},
+         {"key":"transparency", "path": "./icons/transparency.svg"},
+@@ -87,8 +87,8 @@
+         {"key":"volume_high", "path": "./icons/juxt/volume_high.svg"},
+         {"key":"volume_low", "path": "./icons/juxt/volume_low.svg"},
+         {"key":"volume_medium", "path": "./icons/juxt/volume_medium.svg"},
+-        {"key":"volume_muted", "path": "./icons/volume_muted.svg"},
+-        {"key":"volume_zero", "path": "./icons/volume_zero.svg"},
++        {"key":"volume_muted", "path": "./icons/juxt/volume_muted.svg"},
++        {"key":"volume_zero", "path": "./icons/juxt/volume_zero.svg"},
+         {"key":"window_close", "path": "./icons/juxt/window_close.svg"},
+         {"key":"window_maximize", "path": "./icons/juxt/window_maximize.svg"},
+         {"key":"window_minimize", "path": "./icons/juxt/window_minimize.svg"},
+diff --git a/modules/gui/qt/pixmaps/VLCIcons.ttf b/modules/gui/qt/pixmaps/VLCIcons.ttf
+index 3f260e9f9b83ba1cf5d30cd133172f29d9117dca..c538b206b0c7e9f98f4c56119bce21fc658d24b2 100644
+GIT binary patch
+delta 2937
+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
+D30_z3
+
+delta 2851
+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
+SgpD)g3_}MzGkfew-+usm`f5P{
+
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/bookmark.svg b/modules/gui/qt/pixmaps/icons/juxt/bookmark.svg
+new file mode 100644
+index 0000000..0a54841
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/bookmark.svg
+@@ -0,0 +1,38 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=bookmark, direction=default, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame 1">
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 6.8105469,2.25 C 5.9650307,2.25 5.253942,2.9233707 5.2070312,3.7675781 L 4.3417969,19.310547 c -0.06977,1.255757 1.3877858,2.118462 2.4550781,1.453125 l 5.146484,-3.208985 c 0.03601,-0.02245 0.07727,-0.02245 0.113282,0 l 5.146484,3.208985 c 1.06727,0.665323 2.524809,-0.197425 2.455078,-1.453125 L 18.792969,3.7675781 C 18.745954,2.9235074 18.034966,2.25 17.189453,2.25 Z m 0,1.5 H 17.189453 c 0.06429,0 0.103837,0.037193 0.107422,0.1015625 l 0.863281,15.5410155 c 0.0073,0.1309 -0.05293,0.166934 -0.164062,0.09766 l -5.146485,-3.207031 c -0.518987,-0.323548 -1.180231,-0.323548 -1.699218,0 l -5.1464848,3.207031 c -0.1111077,0.06926 -0.1713321,0.03319 -0.1640625,-0.09766 L 6.703125,3.8515625 C 6.7066943,3.7873299 6.746223,3.75 6.8105469,3.75 Z"
++             id="Vector 83" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 12,6.25 A 0.75,0.75 0 0 0 11.25,7 v 6 A 0.75,0.75 0 0 0 12,13.75 0.75,0.75 0 0 0 12.75,13 V 7 A 0.75,0.75 0 0 0 12,6.25 Z"
++             id="Vector 39" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 9,9.25 A 0.75,0.75 0 0 0 8.25,10 0.75,0.75 0 0 0 9,10.75 h 6 A 0.75,0.75 0 0 0 15.75,10 0.75,0.75 0 0 0 15,9.25 Z"
++             id="Vector 40" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/chevron_down.svg b/modules/gui/qt/pixmaps/icons/juxt/chevron_down.svg
+new file mode 100644
+index 0000000..63e0f25
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/chevron_down.svg
+@@ -0,0 +1,30 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=chevron, direction=down, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame">
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="m 7,9.25 a 0.75,0.75 0 0 0 -0.53125,0.21875 0.75,0.75 0 0 0 0,1.0625 l 5,5 a 0.750075,0.750075 0 0 0 1.0625,0 l 5,-5 a 0.75,0.75 0 0 0 0,-1.0625 0.75,0.75 0 0 0 -1.0625,0 L 12,13.9375 7.53125,9.46875 A 0.75,0.75 0 0 0 7,9.25 Z"
++             id="Vector 27" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/chevron_up.svg b/modules/gui/qt/pixmaps/icons/juxt/chevron_up.svg
+new file mode 100644
+index 0000000..5c258c3
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/chevron_up.svg
+@@ -0,0 +1,30 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=chevron, direction=up, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame">
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="m 11.46875,8.46875 -5,5 a 0.75,0.75 0 0 0 0,1.0625 0.75,0.75 0 0 0 1.0625,0 L 12,10.0625 l 4.46875,4.46875 a 0.75,0.75 0 0 0 1.0625,0 0.75,0.75 0 0 0 0,-1.0625 l -5,-5 a 0.750075,0.750075 0 0 0 -1.0625,0 z"
++             id="Vector 27" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/expand.svg b/modules/gui/qt/pixmaps/icons/juxt/expand.svg
+new file mode 100644
+index 0000000..63e0f25
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/expand.svg
+@@ -0,0 +1,30 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=chevron, direction=down, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame">
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="m 7,9.25 a 0.75,0.75 0 0 0 -0.53125,0.21875 0.75,0.75 0 0 0 0,1.0625 l 5,5 a 0.750075,0.750075 0 0 0 1.0625,0 l 5,-5 a 0.75,0.75 0 0 0 0,-1.0625 0.75,0.75 0 0 0 -1.0625,0 L 12,13.9375 7.53125,9.46875 A 0.75,0.75 0 0 0 7,9.25 Z"
++             id="Vector 27" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/ic_fluent_chevron_down_24.svg b/modules/gui/qt/pixmaps/icons/juxt/ic_fluent_chevron_down_24.svg
+new file mode 100644
+index 0000000..63e0f25
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/ic_fluent_chevron_down_24.svg
+@@ -0,0 +1,30 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=chevron, direction=down, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame">
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="m 7,9.25 a 0.75,0.75 0 0 0 -0.53125,0.21875 0.75,0.75 0 0 0 0,1.0625 l 5,5 a 0.750075,0.750075 0 0 0 1.0625,0 l 5,-5 a 0.75,0.75 0 0 0 0,-1.0625 0.75,0.75 0 0 0 -1.0625,0 L 12,13.9375 7.53125,9.46875 A 0.75,0.75 0 0 0 7,9.25 Z"
++             id="Vector 27" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/ic_fluent_chevron_up_24.svg b/modules/gui/qt/pixmaps/icons/juxt/ic_fluent_chevron_up_24.svg
+new file mode 100644
+index 0000000..5c258c3
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/ic_fluent_chevron_up_24.svg
+@@ -0,0 +1,30 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=chevron, direction=up, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame">
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="m 11.46875,8.46875 -5,5 a 0.75,0.75 0 0 0 0,1.0625 0.75,0.75 0 0 0 1.0625,0 L 12,10.0625 l 4.46875,4.46875 a 0.75,0.75 0 0 0 1.0625,0 0.75,0.75 0 0 0 0,-1.0625 l -5,-5 a 0.750075,0.750075 0 0 0 -1.0625,0 z"
++             id="Vector 27" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/info.svg b/modules/gui/qt/pixmaps/icons/juxt/info.svg
+new file mode 100644
+index 0000000..586fe1b
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/info.svg
+@@ -0,0 +1,38 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=info, direction=default, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame 1">
++          <path
++             style="fill:#000000"
++             d="M 12,1.25 C 6.0718224,1.25 1.25,6.0718224 1.25,12 1.25,17.928178 6.0718224,22.75 12,22.75 17.928178,22.75 22.75,17.928178 22.75,12 22.75,6.0718224 17.928178,1.25 12,1.25 Z m 0,1.5 c 5.117517,0 9.25,4.1324826 9.25,9.25 0,5.117517 -4.132483,9.25 -9.25,9.25 C 6.8824826,21.25 2.75,17.117517 2.75,12 2.75,6.8824826 6.8824826,2.75 12,2.75 Z"
++             id="Ellipse 9" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="m 12,10 a 1,1 0 0 0 -1,1 v 6 a 1,1 0 0 0 1,1 1,1 0 0 0 1,-1 v -6 a 1,1 0 0 0 -1,-1 z"
++             id="Vector 98" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 12,6 A 1,1 0 0 0 11,7 1,1 0 0 0 12,8 1,1 0 0 0 13,7 1,1 0 0 0 12,6 Z"
++             id="Vector 99" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/record.svg b/modules/gui/qt/pixmaps/icons/juxt/record.svg
+new file mode 100644
+index 0000000..4b6bbf8
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/record.svg
+@@ -0,0 +1,41 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=record, direction=default, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame 1">
++          <path
++             style="fill:#000000"
++             d="m 12,3 c -4.9616793,0 -9,4.0383207 -9,9 0,4.961679 4.0383207,9 9,9 4.961679,0 9,-4.038321 9,-9 0,-4.9616793 -4.038321,-9 -9,-9 z m 0,1.5 c 4.151019,0 7.5,3.3489809 7.5,7.5 0,4.151019 -3.348981,7.5 -7.5,7.5 C 7.8489809,19.5 4.5,16.151019 4.5,12 4.5,7.8489809 7.8489809,4.5 12,4.5 Z"
++             id="Ellipse 14" />
++          <g
++             id="Ellipse 15">
++            <path
++               style="fill:#000000"
++               d="M 15.25,12 A 3.25,3.25 0 0 1 12,15.25 3.25,3.25 0 0 1 8.75,12 3.25,3.25 0 0 1 12,8.75 3.25,3.25 0 0 1 15.25,12 Z"
++               id="path2" />
++            <path
++               style="fill:#000000"
++               d="m 12,8 c -2.2002555,0 -4,1.7997445 -4,4 0,2.200256 1.7997445,4 4,4 2.200256,0 4,-1.799744 4,-4 0,-2.2002555 -1.799744,-4 -4,-4 z m 0,1.5 c 1.389595,0 2.5,1.110405 2.5,2.5 0,1.389595 -1.110405,2.5 -2.5,2.5 -1.389595,0 -2.5,-1.110405 -2.5,-2.5 0,-1.389595 1.110405,-2.5 2.5,-2.5 z"
++               id="path3" />
++          </g>
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/repeat_all.svg b/modules/gui/qt/pixmaps/icons/juxt/repeat_all.svg
+new file mode 100644
+index 0000000..f3b37b6
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/repeat_all.svg
+@@ -0,0 +1,34 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=repeat, direction=right, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame">
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="m 16,3.25 a 0.75,0.75 0 0 0 -0.53125,0.21875 0.75,0.75 0 0 0 0,1.0625 L 17.189453,6.25 H 8 C 5.9377995,6.25 4.25,7.9377617 4.25,10 A 0.75,0.75 0 0 0 5,10.75 0.75,0.75 0 0 0 5.75,10 C 5.75,8.7483983 6.7484605,7.75 8,7.75 h 9.189453 L 15.46875,9.4707031 a 0.75,0.75 0 0 0 0,1.0605469 0.75,0.75 0 0 0 1.0625,0 l 3,-3 A 0.750075,0.750075 0 0 0 19.75,7 0.75,0.75 0 0 0 19.693359,6.7128906 0.750075,0.750075 0 0 0 19.53125,6.4707031 l -3,-3.0019531 A 0.75,0.75 0 0 0 16,3.25 Z"
++             id="Vector 27" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 19,13.25 A 0.75,0.75 0 0 0 18.25,14 c 0,1.251565 -0.99856,2.25 -2.25,2.25 H 6.8105469 L 8.53125,14.529297 a 0.75,0.75 0 0 0 0,-1.060547 0.75,0.75 0 0 0 -1.0625,0 l -3,3 A 0.75,0.75 0 0 0 4.25,17 0.75,0.75 0 0 0 4.46875,17.529297 l 3,3.001953 a 0.75,0.75 0 0 0 1.0625,0 0.75,0.75 0 0 0 0,-1.0625 L 6.8105469,17.75 H 16 c 2.06216,0 3.75,-1.687765 3.75,-3.75 A 0.75,0.75 0 0 0 19,13.25 Z"
++             id="Vector 28" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/shuffle.svg b/modules/gui/qt/pixmaps/icons/juxt/shuffle.svg
+new file mode 100644
+index 0000000..5b25ebf
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/shuffle.svg
+@@ -0,0 +1,34 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=shuffle, direction=right, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame">
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="m 16.96875,4.46875 a 0.75,0.75 0 0 0 0,1.0625 L 18.1875,6.75 H 15.365234 C 12.46316,6.75 9.9342147,8.7531806 9.2695313,11.578125 8.762406,13.733392 6.8488881,15.25 4.6347656,15.25 H 3 A 0.75,0.75 0 0 0 2.25,16 0.75,0.75 0 0 0 3,16.75 h 1.6347656 c 2.9020576,0 5.4310084,-2.003192 6.0957034,-4.828125 C 11.237585,9.7665994 13.151108,8.25 15.365234,8.25 H 18.1875 l -1.21875,1.21875 a 0.75,0.75 0 0 0 0,1.0625 0.75,0.75 0 0 0 1.0625,0 l 2.5,-2.5 A 0.750075,0.750075 0 0 0 20.75,7.5 0.75,0.75 0 0 0 20.53125,6.9707031 l -2.5,-2.5019531 a 0.75,0.75 0 0 0 -1.0625,0 z"
++             id="Vector 27" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 3,6.75 A 0.75,0.75 0 0 0 2.25,7.5 0.75,0.75 0 0 0 3,8.25 h 1.6347656 c 2.2141843,0 4.1276412,1.5166024 4.6347657,3.671875 C 9.9342095,14.746899 12.463062,16.75 15.365234,16.75 H 18.1875 l -1.21875,1.21875 a 0.75,0.75 0 0 0 0,1.0625 0.75,0.75 0 0 0 1.0625,0 l 2.5,-2.5 A 0.750075,0.750075 0 0 0 20.75,16 0.750075,0.750075 0 0 0 20.693359,15.712891 0.75,0.75 0 0 0 20.53125,15.470703 l -2.5,-2.501953 a 0.75,0.75 0 0 0 -1.0625,0 0.75,0.75 0 0 0 0,1.0625 L 18.1875,15.25 h -2.822266 c -2.214227,0 -4.127643,-1.516499 -4.634765,-3.671875 C 10.065773,8.7531776 7.5369014,6.75 4.6347656,6.75 Z"
++             id="Vector 28" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/skip_for.svg b/modules/gui/qt/pixmaps/icons/juxt/skip_for.svg
+new file mode 100644
+index 0000000..e8e063a
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/skip_for.svg
+@@ -0,0 +1,34 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=forward-10-sec, direction=default, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame">
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 11.714844,3.25 C 8.9489648,3.25 6.9058554,4.3519086 5.5546875,5.7226562 4.2035196,7.0934039 3.5140591,8.6935016 3.2675781,9.84375 A 0.75,0.75 0 0 0 3.84375,10.732422 0.75,0.75 0 0 0 4.7324219,10.15625 C 4.9145109,9.3064984 5.5099248,7.9065961 6.6230469,6.7773437 7.7361689,5.6480914 9.3378527,4.75 11.714844,4.75 c 2.376953,0 3.851454,0.8825236 4.917968,2.0136719 0.605443,0.642134 1.040453,1.3558313 1.402344,2.0488281 L 14.496094,7.7792969 a 0.75,0.75 0 0 0 -0.929688,0.5097656 0.75,0.75 0 0 0 0.509766,0.9316406 l 5.142578,1.4999999 a 0.750075,0.750075 0 0 0 0.316406,-0.107422 0.75,0.75 0 0 0 0.189453,0.07617 0.75,0.75 0 0 0 0.306641,-0.246094 0.750075,0.750075 0 0 0 0.002,0 L 22.603516,6.9433594 A 0.75,0.75 0 0 0 22.443359,5.8964844 0.75,0.75 0 0 0 21.396484,6.0566406 L 19.568359,8.5429688 C 19.143426,7.6550159 18.609402,6.6747416 17.724609,5.7363281 16.433974,4.3674764 14.48069,3.25 11.714844,3.25 Z"
++             id="Vector 19" />
++          <path
++             id="10"
++             d="M9.45881 11.7273V19H8.35795V12.8281H8.31534L6.57528 13.9645V12.9134L8.38991 11.7273H9.45881ZM13.9581 19.1207C13.397 19.1184 12.9176 18.9704 12.5199 18.6768C12.1222 18.3833 11.8179 17.956 11.6072 17.3949C11.3965 16.8338 11.2912 16.1579 11.2912 15.3672C11.2912 14.5788 11.3965 13.9053 11.6072 13.3466C11.8203 12.7879 12.1257 12.3617 12.5234 12.0682C12.9235 11.7746 13.4018 11.6278 13.9581 11.6278C14.5144 11.6278 14.9915 11.7758 15.3892 12.0717C15.7869 12.3653 16.0911 12.7914 16.3018 13.3501C16.5149 13.9065 16.6214 14.5788 16.6214 15.3672C16.6214 16.1603 16.5161 16.8374 16.3054 17.3984C16.0947 17.9571 15.7905 18.3845 15.3928 18.6804C14.995 18.974 14.5168 19.1207 13.9581 19.1207ZM13.9581 18.1726C14.4505 18.1726 14.8352 17.9323 15.1122 17.4517C15.3916 16.9711 15.5312 16.2763 15.5312 15.3672C15.5312 14.7635 15.4673 14.2533 15.3395 13.8366C15.214 13.4176 15.0329 13.1004 14.7962 12.8849C14.5618 12.6671 14.2824 12.5582 13.9581 12.5582C13.468 12.5582 13.0833 12.7997 12.804 13.2827C12.5246 13.7656 12.3838 14.4605 12.3814 15.3672C12.3814 15.9732 12.4441 16.4858 12.5696 16.9048C12.6974 17.3215 12.8786 17.6375 13.1129 17.853C13.3473 18.0661 13.629 18.1726 13.9581 18.1726Z"
++             fill="#000000" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/snapshot.svg b/modules/gui/qt/pixmaps/icons/juxt/snapshot.svg
+new file mode 100644
+index 0000000..13efe3c
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/snapshot.svg
+@@ -0,0 +1,34 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=snapshot, direction=default, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame 1">
++          <path
++             style="fill:#000000"
++             d="m 12,8 c -2.2002555,0 -4,1.7997445 -4,4 0,2.200256 1.7997445,4 4,4 2.200256,0 4,-1.799744 4,-4 0,-2.2002555 -1.799744,-4 -4,-4 z m 0,1.5 c 1.389595,0 2.5,1.110405 2.5,2.5 0,1.389595 -1.110405,2.5 -2.5,2.5 -1.389595,0 -2.5,-1.110405 -2.5,-2.5 0,-1.389595 1.110405,-2.5 2.5,-2.5 z"
++             id="Ellipse 15" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 4,3.25 A 0.750075,0.750075 0 0 0 3.25,4 v 4.8007813 a 0.75,0.75 0 0 0 0.75,0.75 0.75,0.75 0 0 0 0.75,-0.75 V 4.75 h 4.0507813 a 0.75,0.75 0 0 0 0.75,-0.75 0.75,0.75 0 0 0 -0.75,-0.75 z m 11.199219,0 a 0.75,0.75 0 0 0 -0.75,0.75 0.75,0.75 0 0 0 0.75,0.75 H 19.25 v 4.0507813 a 0.75,0.75 0 0 0 0.75,0.75 0.75,0.75 0 0 0 0.75,-0.75 V 4 A 0.750075,0.750075 0 0 0 20,3.25 Z M 4,14.449219 a 0.75,0.75 0 0 0 -0.75,0.75 V 20 A 0.750075,0.750075 0 0 0 4,20.75 h 4.8007813 a 0.75,0.75 0 0 0 0.75,-0.75 0.75,0.75 0 0 0 -0.75,-0.75 H 4.75 v -4.050781 a 0.75,0.75 0 0 0 -0.75,-0.75 z m 16,0 a 0.75,0.75 0 0 0 -0.75,0.75 V 19.25 h -4.050781 a 0.75,0.75 0 0 0 -0.75,0.75 0.75,0.75 0 0 0 0.75,0.75 H 20 A 0.750075,0.750075 0 0 0 20.75,20 v -4.800781 a 0.75,0.75 0 0 0 -0.75,-0.75 z"
++             id="Vector 22" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/stop.svg b/modules/gui/qt/pixmaps/icons/juxt/stop.svg
+new file mode 100644
+index 0000000..5e76a6d
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/stop.svg
+@@ -0,0 +1,37 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=stop, direction=default, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame 17">
++          <g
++             id="Vector 16">
++            <path
++               style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++               d="M 8,17 V 7 h 8 v 10 z"
++               id="path2" />
++            <path
++               style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++               d="M 8,6.25 A 0.750075,0.750075 0 0 0 7.25,7 V 17 A 0.750075,0.750075 0 0 0 8,17.75 h 8 A 0.750075,0.750075 0 0 0 16.75,17 V 7 A 0.750075,0.750075 0 0 0 16,6.25 Z m 0.75,1.5 h 6.5 v 8.5 h -6.5 z"
++               id="path3" />
++          </g>
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/volume_muted.svg b/modules/gui/qt/pixmaps/icons/juxt/volume_muted.svg
+new file mode 100644
+index 0000000..efe839e
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/volume_muted.svg
+@@ -0,0 +1,34 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=close, direction=default, state=default, value=none, EQ=default, two-tone=no">
++        <g
++           id="Frame">
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 11.207031,4.0683594 4.2070312,7.625 C 3.6209827,7.9226771 3.25,8.5282235 3.25,9.1855469 V 12 14.814453 c 0,0.657323 0.3709616,1.262859 0.9570312,1.560547 l 6.9999998,3.556641 C 12.342844,20.50851 13.75,19.645005 13.75,18.371094 V 12 5.6289062 c 0,-1.2739259 -1.40714,-2.1374241 -2.542969,-1.5605468 z M 11.886719,5.40625 C 12.08149,5.3073273 12.25,5.4105322 12.25,5.6289062 V 12 18.371094 c 0,0.218288 -0.168494,0.321587 -0.363281,0.222656 L 4.8867187,15.037109 C 4.8014484,14.993797 4.75,14.91013 4.75,14.814453 V 12 9.1855469 c 0,-0.095677 0.051427,-0.1793334 0.1367187,-0.2226563 z"
++             id="Vector 31" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="m 16,9.25 a 0.75,0.75 0 0 0 -0.53125,0.21875 0.75,0.75 0 0 0 0,1.0625 L 16.9375,12 15.46875,13.46875 a 0.75,0.75 0 0 0 0,1.0625 0.75,0.75 0 0 0 1.0625,0 L 18,13.0625 l 1.46875,1.46875 a 0.75,0.75 0 0 0 1.0625,0 0.75,0.75 0 0 0 0,-1.0625 L 19.0625,12 20.53125,10.53125 a 0.75130096,0.75130096 0 0 0 -1.0625,-1.0625 L 18,10.9375 16.53125,9.46875 A 0.75,0.75 0 0 0 16,9.25 Z"
++             id="Vector 35" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/volume_zero.svg b/modules/gui/qt/pixmaps/icons/juxt/volume_zero.svg
+new file mode 100644
+index 0000000..efe839e
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/volume_zero.svg
+@@ -0,0 +1,34 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=close, direction=default, state=default, value=none, EQ=default, two-tone=no">
++        <g
++           id="Frame">
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 11.207031,4.0683594 4.2070312,7.625 C 3.6209827,7.9226771 3.25,8.5282235 3.25,9.1855469 V 12 14.814453 c 0,0.657323 0.3709616,1.262859 0.9570312,1.560547 l 6.9999998,3.556641 C 12.342844,20.50851 13.75,19.645005 13.75,18.371094 V 12 5.6289062 c 0,-1.2739259 -1.40714,-2.1374241 -2.542969,-1.5605468 z M 11.886719,5.40625 C 12.08149,5.3073273 12.25,5.4105322 12.25,5.6289062 V 12 18.371094 c 0,0.218288 -0.168494,0.321587 -0.363281,0.222656 L 4.8867187,15.037109 C 4.8014484,14.993797 4.75,14.91013 4.75,14.814453 V 12 9.1855469 c 0,-0.095677 0.051427,-0.1793334 0.1367187,-0.2226563 z"
++             id="Vector 31" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="m 16,9.25 a 0.75,0.75 0 0 0 -0.53125,0.21875 0.75,0.75 0 0 0 0,1.0625 L 16.9375,12 15.46875,13.46875 a 0.75,0.75 0 0 0 0,1.0625 0.75,0.75 0 0 0 1.0625,0 L 18,13.0625 l 1.46875,1.46875 a 0.75,0.75 0 0 0 1.0625,0 0.75,0.75 0 0 0 0,-1.0625 L 19.0625,12 20.53125,10.53125 a 0.75130096,0.75130096 0 0 0 -1.0625,-1.0625 L 18,10.9375 16.53125,9.46875 A 0.75,0.75 0 0 0 16,9.25 Z"
++             id="Vector 35" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/player/qml/TracksListPage.qml b/modules/gui/qt/player/qml/TracksListPage.qml
+index 8e245c7..0894f3b 100644
+--- a/modules/gui/qt/player/qml/TracksListPage.qml
++++ b/modules/gui/qt/player/qml/TracksListPage.qml
+@@ -156,6 +156,9 @@ RowLayout {
+                Rectangle {
+                    id: separator
+ 
++                   // Juxtopposed: the lone audio column already sits against the card border
++                   visible: !root.audioOnly
++
+                    x: 0
+                    y: 0
+                    width: VLCStyle.margin_xxxsmall
+-- 
+2.45.0.windows.1
+
