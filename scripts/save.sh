@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Commit the work in vlc/ and regenerate patches/ from it, so the patches
-# always match the vlc/ commits. Stages patches/ in this repo; committing
-# this repo is left to you.
+# always match the vlc/ commits. Committing this repo is left to you; the
+# patches are not staged, so VS Code commits them together with everything else.
 #   scripts/save.sh "qt: message"   commit vlc/ changes as a new commit
 #   scripts/save.sh --amend         fold vlc/ changes into its last commit
 #   scripts/save.sh                 only regenerate patches/ (vlc/ must be clean)
@@ -40,6 +40,5 @@ fi
 # One patch per vlc/ commit since VLC_BASE, replacing what was there.
 rm -f "$ROOT"/patches/*.patch
 git -C "$VLC" format-patch -q --no-numbered "$VLC_BASE..HEAD" -o "$(to_native "$ROOT/patches")"
-git -C "$(to_native "$ROOT")" add -A patches
-echo "patches/ regenerated from $(git -C "$VLC" rev-list --count "$VLC_BASE..HEAD") vlc/ commits and staged:"
+echo "patches/ regenerated from $(git -C "$VLC" rev-list --count "$VLC_BASE..HEAD") vlc/ commits:"
 git -C "$(to_native "$ROOT")" status --short patches
