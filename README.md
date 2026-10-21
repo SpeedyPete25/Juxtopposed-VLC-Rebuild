@@ -46,7 +46,9 @@ player card in the library (video or cover, seek line, folder and artist),
 player side panel (icon rail and play queue on the left of the video),
 tracks popup as a floating menu card, player icons (stop, skip forward,
 repeat, shuffle, mute, record, snapshot, info, chevrons, bookmark), library
-page headers (back/forward, breadcrumb, item count, sort, view, inline search).
+page headers (back/forward, breadcrumb, item count, sort, view, inline search),
+grid cards (rounder covers, 16px titles; video cards with a dimmed title and an
+orange progress line inside the thumbnail once started).
 
 Not yet: library browsing inside the player side panel, settings window,
 onboarding, dialogs, context menus, light theme, library icons.
