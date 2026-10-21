@@ -1,0 +1,460 @@
+From 9fa3b749842a9832bcda60d2d40228cbae43caf9 Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Tue, 20 Oct 2026 20:30:19 +1030
+Subject: [PATCH] qt: Juxtopposed library page headers
+
+Restyles the shared library page header (PageExt) to the design: back and forward arrows, a breadcrumb built from the navigation path ending with the page title, an item count, sort and grid/list buttons, an always visible search field and an add button, with a divider underneath.
+
+GridSortFilterControls replaces the search button and popup with an inline field (#151515, rounded) that filters as you type. The back arrow moves from the window title bar into the page headers, including the Browse header. Adds the juxtBgA5 and juxtFgA4 tokens for the field background and placeholder.
+---
+ .../gui/qt/maininterface/qml/LocalTopbar.qml  |   3 +
+ .../gui/qt/network/qml/BrowseTreeHeader.qml   |  21 +++
+ modules/gui/qt/style/VLCStyle.qml             |   3 +
+ modules/gui/qt/style/systempalette.cpp        |   2 +
+ modules/gui/qt/style/systempalette.hpp        |   2 +
+ .../qt/widgets/qml/GridSortFilterControls.qml | 141 ++++++++++++++----
+ modules/gui/qt/widgets/qml/PageExt.qml        | 121 ++++++++++++++-
+ 7 files changed, 262 insertions(+), 31 deletions(-)
+
+diff --git a/modules/gui/qt/maininterface/qml/LocalTopbar.qml b/modules/gui/qt/maininterface/qml/LocalTopbar.qml
+index 6b46299..4d67533 100644
+--- a/modules/gui/qt/maininterface/qml/LocalTopbar.qml
++++ b/modules/gui/qt/maininterface/qml/LocalTopbar.qml
+@@ -155,6 +155,9 @@ T.ToolBar {
+                 Widgets.IconToolButton {
+                     id: historyBack
+ 
++                    // Juxtopposed: back/forward live in the page header
++                    visible: false
++
+                     anchors.verticalCenter: parent.verticalCenter
+ 
+                     font.pixelSize: VLCStyle.icon_normal
+diff --git a/modules/gui/qt/network/qml/BrowseTreeHeader.qml b/modules/gui/qt/network/qml/BrowseTreeHeader.qml
+index 23f1ed5..d1ce531 100644
+--- a/modules/gui/qt/network/qml/BrowseTreeHeader.qml
++++ b/modules/gui/qt/network/qml/BrowseTreeHeader.qml
+@@ -73,6 +73,27 @@ T.Pane {
+ 
+         anchors.fill: parent
+ 
++        // Juxtopposed: back/forward moved here from the window title bar
++        Row {
++            spacing: VLCStyle.dp(12, VLCStyle.scale)
++
++            Widgets.IconToolButton {
++                font.pixelSize: VLCStyle.icon_normal
++                text: VLCIcons.back
++                description: qsTr("Previous")
++                enabled: !History.previousEmpty
++                onClicked: History.previous(Qt.MouseFocusReason)
++            }
++
++            Widgets.IconToolButton {
++                font.pixelSize: VLCStyle.icon_normal
++                text: VLCIcons.back
++                description: qsTr("Next")
++                enabled: false
++                rotation: 180
++            }
++        }
++
+         NetworkAddressbar {
+             id: networkAddressbar
+ 
+diff --git a/modules/gui/qt/style/VLCStyle.qml b/modules/gui/qt/style/VLCStyle.qml
+index 2fe9282..2ddb194 100644
+--- a/modules/gui/qt/style/VLCStyle.qml
++++ b/modules/gui/qt/style/VLCStyle.qml
+@@ -352,6 +352,9 @@ QtObject {
+     readonly property int juxtMenu_width: MainCtx.dp(720, scale)
+     readonly property real juxtMenu_radius: MainCtx.dp(8, scale)
+     readonly property int juxtMenu_margin: MainCtx.dp(12, scale)
++    readonly property int juxtHeader_spacing: MainCtx.dp(20, scale)
++    readonly property int juxtSearch_width: MainCtx.dp(325, scale)
++    readonly property int juxtSearch_minWidth: MainCtx.dp(160, scale)
+ 
+     // Scroll bar (size means width or height, depending on the orientation):
+     readonly property real scrollBarInteractingSize: MainCtx.dp(8, scale)
+diff --git a/modules/gui/qt/style/systempalette.cpp b/modules/gui/qt/style/systempalette.cpp
+index ae9efd3..88ea814 100644
+--- a/modules/gui/qt/style/systempalette.cpp
++++ b/modules/gui/qt/style/systempalette.cpp
+@@ -867,6 +867,8 @@ void SystemPalette::makeDarkPalette()
+     //TextField
+     {
+         C::ColorSet CS = C::TextField;
++        setColor(CS, C::Bg, C::Primary, C::Normal, juxtBgA5);      // Juxtopposed search field
++        setColor(CS, C::Fg, C::Secondary, C::Normal, juxtFgA4);    // placeholder
+         setColor(CS, C::Decoration, C::Border, C::Normal, setColorAlpha(Qt::white, 0.4) );
+         setColor(CS, C::Decoration, C::Border, C::Focused, orange500 );
+         setColor(CS, C::Decoration, C::Border, C::Hovered, setColorAlpha(Qt::white, 0.7) );
+diff --git a/modules/gui/qt/style/systempalette.hpp b/modules/gui/qt/style/systempalette.hpp
+index ad88d60..788094a 100644
+--- a/modules/gui/qt/style/systempalette.hpp
++++ b/modules/gui/qt/style/systempalette.hpp
+@@ -121,9 +121,11 @@ public:
+     COLOR_DEFINITION(juxtBgB2, "#090909");      // seek track
+     COLOR_DEFINITION(juxtBgAccent, "#371F06");  // played part of the seek track
+     COLOR_DEFINITION(juxtBgPill, "#262626");    // hovered / selected side bar item
++    COLOR_DEFINITION(juxtBgA5, "#151515");      // search field
+     COLOR_DEFINITION(juxtFgA1, "#969696");
+     COLOR_DEFINITION(juxtFgA2, "#8F8F8F");
+     COLOR_DEFINITION(juxtFgA3, "#6B6B6B");
++    COLOR_DEFINITION(juxtFgA4, "#404040");      // placeholder text
+     COLOR_DEFINITION(juxtFgB1, "#161616");      // glyph on accent buttons
+     COLOR_DEFINITION(juxtDividerBright, "#373737");
+     COLOR_DEFINITION(juxtDividerDim, "#222222");
+diff --git a/modules/gui/qt/widgets/qml/GridSortFilterControls.qml b/modules/gui/qt/widgets/qml/GridSortFilterControls.qml
+index 30b9c5f..e283d16 100644
+--- a/modules/gui/qt/widgets/qml/GridSortFilterControls.qml
++++ b/modules/gui/qt/widgets/qml/GridSortFilterControls.qml
+@@ -1,4 +1,5 @@
+ import QtQuick
++import QtQuick.Templates as T
+ 
+ import VLC.MainInterface
+ import VLC.Style
+@@ -8,29 +9,14 @@ import VLC.Menus
+ NavigableRow {
+     id: root
+ 
+-    spacing: VLCStyle.margin_normal
+-    enabled: gridListBtn.visible || sortControl.visible || searchBox.visible
++    // Juxtopposed: sort, grid/list, then an always visible search field
++    spacing: VLCStyle.juxtHeader_spacing
++    enabled: gridListBtn.visible || sortControl.visible || searchField.visible
+ 
+     property SortMenu sortMenu: null
+     required property SortCtx sort
+     required property SearchCtx search
+ 
+-
+-    //TODO: visible value of root.sort.available and MainCtx.hasGridListMode is initialised correctly but on first load still shows up
+-    IconToolButton {
+-        id: gridListBtn
+-
+-        visible: MainCtx.hasGridListMode
+-
+-        enabled: visible
+-        width: VLCStyle.bannerButton_width
+-        height: VLCStyle.bannerButton_height
+-        font.pixelSize: VLCStyle.icon_banner
+-        text: MainCtx.gridView ? VLCIcons.list : VLCIcons.grid
+-        description: qsTr("List/Grid")
+-        onClicked: MainCtx.gridView = !MainCtx.gridView
+-    }
+-
+     SortControl {
+         id: sortControl
+ 
+@@ -56,24 +42,125 @@ NavigableRow {
+         }
+     }
+ 
+-    SearchBox {
+-        id: searchBox
++    //TODO: visible value of root.sort.available and MainCtx.hasGridListMode is initialised correctly but on first load still shows up
++    IconToolButton {
++        id: gridListBtn
++
++        visible: MainCtx.hasGridListMode
++
++        enabled: visible
++        width: VLCStyle.bannerButton_width
++        height: VLCStyle.bannerButton_height
++        font.pixelSize: VLCStyle.icon_banner
++        text: MainCtx.gridView ? VLCIcons.list : VLCIcons.grid
++        description: qsTr("List/Grid")
++        onClicked: MainCtx.gridView = !MainCtx.gridView
++    }
++
++    // Juxtopposed: the design's inline search field (#151515, rounded)
++    // replaces the search button and its popup.
++    Rectangle {
++        id: searchField
+ 
+-        //TODO: initialise visible value with MainCtx
+         visible: root.search.available
++        enabled: visible
++
++        width: Math.min(VLCStyle.juxtSearch_width, Math.max(VLCStyle.juxtSearch_minWidth, root.parent ? root.parent.width / 4 : 0))
+         height: VLCStyle.bannerButton_height
+-        buttonWidth: VLCStyle.bannerButton_width
+ 
+-        Binding {
+-            target: root.search
+-            property: "pattern"
+-            value: searchBox.searchPattern
++        color: fieldTheme.bg.primary
++        radius: VLCStyle.juxtSeek_radius
++        border.width: textField.activeFocus ? VLCStyle.border : 0
++        border.color: fieldTheme.border
++
++        Accessible.role: Accessible.EditableText
++        Accessible.name: qsTr("Search")
++
++        readonly property ColorContext colorContext: ColorContext {
++            id: fieldTheme
++            colorSet: ColorContext.TextField
++
++            focused: textField.activeFocus
++            hovered: fieldHover.hovered
++            enabled: searchField.enabled
++        }
++
++        HoverHandler {
++            id: fieldHover
++            cursorShape: Qt.IBeamCursor
++        }
++
++        TapHandler {
++            onTapped: textField.forceActiveFocus(Qt.MouseFocusReason)
++        }
++
++        IconLabel {
++            id: searchIcon
++
++            anchors.left: parent.left
++            anchors.leftMargin: VLCStyle.dp(8, VLCStyle.scale)
++            anchors.verticalCenter: parent.verticalCenter
++
++            text: VLCIcons.search
++            color: fieldTheme.fg.secondary
++            font.pixelSize: VLCStyle.icon_normal
++        }
++
++        T.TextField {
++            id: textField
++
++            anchors.left: searchIcon.right
++            anchors.leftMargin: VLCStyle.dp(10, VLCStyle.scale)
++            anchors.right: parent.right
++            anchors.rightMargin: VLCStyle.dp(8, VLCStyle.scale)
++            anchors.top: parent.top
++            anchors.bottom: parent.bottom
++
++            focus: true
++
++            placeholderText: qsTr("Search")
++            placeholderTextColor: fieldTheme.fg.secondary
++            verticalAlignment: TextInput.AlignVCenter
++            color: fieldTheme.fg.primary
++            selectionColor: fieldTheme.bg.highlight
++            selectedTextColor: fieldTheme.fg.highlight
++            font.pixelSize: VLCStyle.fontSize_large
++
++            Keys.onEscapePressed: (event) => {
++                if (text.length > 0) {
++                    text = ""
++                    event.accepted = true
++                } else {
++                    event.accepted = false
++                }
++            }
++
++            // Avoid filtering the model on every keystroke
++            onTextChanged: searchTimer.restart()
++
++            Timer {
++                id: searchTimer
++
++                interval: VLCStyle.duration_short
++                onTriggered: root.search.pattern = textField.text
++            }
++        }
++
++        // Templates' TextField draws no placeholder by itself
++        T.Label {
++            anchors.left: textField.left
++            anchors.verticalCenter: parent.verticalCenter
++
++            visible: !textField.length && !textField.preeditText
++            text: textField.placeholderText
++            color: textField.placeholderTextColor
++            font: textField.font
+         }
+ 
+         Connections {
+             target: root.search
+             function onAskShow() {
+-                searchBox.expandAndFocus()
++                textField.forceActiveFocus(Qt.ShortcutFocusReason)
+             }
+         }
+     }
+diff --git a/modules/gui/qt/widgets/qml/PageExt.qml b/modules/gui/qt/widgets/qml/PageExt.qml
+index 1299d28..ecff52b 100644
+--- a/modules/gui/qt/widgets/qml/PageExt.qml
++++ b/modules/gui/qt/widgets/qml/PageExt.qml
+@@ -23,6 +23,7 @@ import VLC.MainInterface
+ import VLC.Style
+ import VLC.Menus
+ import VLC.Util
++import VLC.Dialogs
+ 
+ T.Page {
+     id: root
+@@ -112,6 +113,9 @@ T.Page {
+     header: DefaultPageHeader {
+         text: root.title
+ 
++        // Juxtopposed: "N items" next to the controls, when the view has a model
++        itemCount: root._firstChild?.model?.count ?? -1
++
+         leftPadding: VLCStyle.dynamicAppMargins(width) + VLCStyle.layout_left_margin + root.leftPadding
+         rightPadding: VLCStyle.dynamicAppMargins(width) + VLCStyle.layout_right_margin + root.rightPadding
+ 
+@@ -135,7 +139,9 @@ T.Page {
+         id: defaultPageHeader
+ 
+         // Properties
+-        property alias text: label.text
++        property string text
++
++        property int itemCount: -1
+ 
+         property alias sortMenu: gridSortFilter.sortMenu
+ 
+@@ -168,21 +174,121 @@ T.Page {
+             colorSet: ColorContext.View
+         }
+ 
++        // Juxtopposed: divider under the header
+         background: Rectangle {
+             color: theme.bg.primary
++
++            Rectangle {
++                anchors.left: parent.left
++                anchors.right: parent.right
++                anchors.bottom: parent.bottom
++                anchors.leftMargin: defaultPageHeader.leftPadding
++                anchors.rightMargin: defaultPageHeader.rightPadding
++
++                height: VLCStyle.border
++                color: theme.separator
++            }
++        }
++
++        // Breadcrumb from the navigation path, ending with the page title
++        readonly property var _crumbs: {
++            const names = {
++                "home": qsTr("Home"), "video": qsTr("Videos"), "music": qsTr("Music"),
++                "network": qsTr("Browse"), "discover": qsTr("Discover"),
++                "playlists": qsTr("Playlists"), "artists": qsTr("Artists"),
++                "albums": qsTr("Albums"), "tracks": qsTr("Tracks"), "genres": qsTr("Genres"),
++                "services": qsTr("Services"), "url": qsTr("URL")
++            }
++            const crumbs = []
++            for (const segment of History.viewPath) {
++                if (names[segment] && !crumbs.includes(names[segment]))
++                    crumbs.push(names[segment])
++            }
++            if (text && !crumbs.includes(text))
++                crumbs.push(text)
++            return crumbs
+         }
+ 
++        // Juxtopposed page header: back/forward, breadcrumb, item count,
++        // sort/view/search, add
+         RowLayout {
+             id: row
+ 
+             anchors.fill: parent
+ 
+-            SubtitleLabel {
+-                id: label
++            spacing: VLCStyle.juxtHeader_spacing
+ 
++            RowLayout {
+                 Layout.fillWidth: true
+ 
+-                color: theme.fg.primary
++                spacing: VLCStyle.dp(10, VLCStyle.scale)
++
++                Row {
++                    spacing: VLCStyle.dp(12, VLCStyle.scale)
++
++                    IconToolButton {
++                        font.pixelSize: VLCStyle.icon_normal
++                        text: VLCIcons.back
++                        description: qsTr("Previous")
++                        enabled: !History.previousEmpty
++                        onClicked: History.previous(Qt.MouseFocusReason)
++                    }
++
++                    // There is no forward history yet; shown dimmed as in the design
++                    IconToolButton {
++                        font.pixelSize: VLCStyle.icon_normal
++                        text: VLCIcons.back
++                        description: qsTr("Next")
++                        enabled: false
++                        rotation: 180
++                    }
++                }
++
++                Row {
++                    Layout.fillWidth: true
++
++                    clip: true
++                    spacing: VLCStyle.dp(6, VLCStyle.scale)
++
++                    Repeater {
++                        model: defaultPageHeader._crumbs
++
++                        Row {
++                            id: crumb
++
++                            required property string modelData
++                            required property int index
++
++                            spacing: VLCStyle.dp(6, VLCStyle.scale)
++
++                            T.Label {
++                                anchors.verticalCenter: parent.verticalCenter
++                                visible: crumb.index > 0
++                                text: "\u25B6"
++                                color: theme.fg.secondary
++                                opacity: 0.6
++                                font.pixelSize: VLCStyle.dp(8, VLCStyle.scale)
++                            }
++
++                            T.Label {
++                                anchors.verticalCenter: parent.verticalCenter
++                                text: crumb.modelData
++                                color: theme.fg.primary
++                                font.pixelSize: VLCStyle.fontSize_xlarge
++                                font.weight: (crumb.index === defaultPageHeader._crumbs.length - 1) ? Font.DemiBold
++                                                                                                     : Font.Normal
++                            }
++                        }
++                    }
++                }
++            }
++
++            T.Label {
++                visible: defaultPageHeader.itemCount >= 0
++
++                text: qsTr("%1 item", "%1 items", defaultPageHeader.itemCount).arg(defaultPageHeader.itemCount)
++                color: theme.fg.secondary
++                font.pixelSize: VLCStyle.fontSize_large
+             }
+ 
+             GridSortFilterControls {
+@@ -192,6 +298,13 @@ T.Page {
+                 search: _searchCtx
+                 Navigation.parentItem: defaultPageHeader
+             }
++
++            IconToolButton {
++                font.pixelSize: VLCStyle.icon_normal
++                text: VLCIcons.add
++                description: qsTr("Open media")
++                onClicked: DialogsProvider.simpleOpenDialog()
++            }
+         }
+     }
+ }
+-- 
+2.45.0.windows.1
+
