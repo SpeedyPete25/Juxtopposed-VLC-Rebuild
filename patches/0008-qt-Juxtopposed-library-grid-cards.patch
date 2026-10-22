@@ -1,0 +1,182 @@
+From 9a945f61e4fcdf6b1c567777c95549d1f0799b6c Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Wed, 21 Oct 2026 22:06:16 +1030
+Subject: [PATCH] qt: Juxtopposed library grid cards
+
+Rounder grid covers (8px, 12px on video thumbnails) and 16px regular titles set further below the cover. Video cards drop the duration line, dim their title once watching has started, and draw the progress as an orange line inside the bottom of the thumbnail instead of a white bar beneath it.
+---
+ .../gui/qt/medialibrary/qml/VideoGridItem.qml | 24 ++++++++-------
+ modules/gui/qt/style/VLCStyle.qml             |  9 ++++--
+ modules/gui/qt/widgets/qml/GridItem.qml       |  8 ++++-
+ .../gui/qt/widgets/qml/VideoProgressBar.qml   | 30 ++++++++++++++++++-
+ 4 files changed, 55 insertions(+), 16 deletions(-)
+
+diff --git a/modules/gui/qt/medialibrary/qml/VideoGridItem.qml b/modules/gui/qt/medialibrary/qml/VideoGridItem.qml
+index c106901..1415e24 100644
+--- a/modules/gui/qt/medialibrary/qml/VideoGridItem.qml
++++ b/modules/gui/qt/medialibrary/qml/VideoGridItem.qml
+@@ -43,17 +43,13 @@ Widgets.GridItem {
+     fillMode: Image.Stretch
+ 
+     title: model.title || qsTr("Unknown title")
+-    subtitle: model?.duration?.formatHMS() ?? ""
++    // Juxtopposed: title only, dimmed once watching has started
++    subtitle: ""
++    titleDimmed: (model.progress > 0)
++    pictureRadius: VLCStyle.juxtGridCover_video_radius
+     pictureWidth: VLCStyle.gridCover_video_width
+     pictureHeight: VLCStyle.gridCover_video_height
+ 
+-    // Bottom rounding is provided by the progress bar if it is visible:
+-    mediaCover.radiusBottomLeft: progressBar.visible ? 0.0 : mediaCover.radius
+-    mediaCover.radiusBottomRight: progressBar.visible ? 0.0 : mediaCover.radius
+-
+-    selectedShadow.height: selectedShadow.implicitHeight + (progressBar.visible ? progressBar.height : 0.0)
+-    unselectedShadow.height: unselectedShadow.implicitHeight + (progressBar.visible ? progressBar.height : 0.0)
+-
+     Widgets.VideoProgressBar {
+         id: progressBar
+ 
+@@ -72,15 +68,21 @@ Widgets.GridItem {
+         // early depth test is applicable. In any case, since bottom radii
+         // are 0.0 and background color is opaque, the top part (if painted)
+         // will not be exposed to the user.
+-        z: (root.mediaCover.color.a > (1.0 - Number.EPSILON)) ? -0.1 : 0.0
+-        clip: (z >= 0.0)
++        // Juxtopposed: an orange line inside the bottom of the thumbnail,
++        // following its rounded corners
++        z: 1
+ 
+         anchors {
+-            top: parent.bottom
++            bottom: parent.bottom
+             left: parent.left
+             right: parent.right
++            // the rounded image is inset by its antialiasing padding
++            margins: Math.ceil(root.mediaCover.padding)
+         }
+ 
++        backgroundColor: "transparent"
++
++
+         visible: (model.progress > 0)
+ 
+         radius: root.pictureRadius
+diff --git a/modules/gui/qt/style/VLCStyle.qml b/modules/gui/qt/style/VLCStyle.qml
+index 2ddb194..98c6d64 100644
+--- a/modules/gui/qt/style/VLCStyle.qml
++++ b/modules/gui/qt/style/VLCStyle.qml
+@@ -203,7 +203,9 @@ QtObject {
+     readonly property int gridCover_video_height: ( gridCover_video_width * 10.0 ) / 16
+     readonly property int gridCover_video_border: MainCtx.dp(4, scale)
+ 
+-    readonly property int gridCover_radius: MainCtx.dp(4, scale)
++    // Juxtopposed: rounder covers (12px on video thumbnails)
++    readonly property int gridCover_radius: MainCtx.dp(8, scale)
++    readonly property int juxtGridCover_video_radius: MainCtx.dp(12, scale)
+ 
+     readonly property int expandCover_music_height: MainCtx.dp(171, scale)
+     readonly property int expandCover_music_width: MainCtx.dp(171, scale)
+@@ -215,8 +217,9 @@ QtObject {
+     readonly property real mainView_topLeftRadius: MainCtx.dp(8, scale)
+ 
+     //GridItem
+-    readonly property int gridItemTitle_topMargin: margin_xsmall + margin_xxxsmall
+-    readonly property int gridItemTitle_height: fontHeight_normal
++    // Juxtopposed: 16px titles set further below the cover
++    readonly property int gridItemTitle_topMargin: MainCtx.dp(16, scale)
++    readonly property int gridItemTitle_height: fontHeight_xlarge
+ 
+     readonly property int gridItemSubtitle_topMargin: margin_xsmall - margin_xxxsmall
+     readonly property int gridItemSubtitle_height: fontHeight_normal
+diff --git a/modules/gui/qt/widgets/qml/GridItem.qml b/modules/gui/qt/widgets/qml/GridItem.qml
+index bf6661a..8e37870 100644
+--- a/modules/gui/qt/widgets/qml/GridItem.qml
++++ b/modules/gui/qt/widgets/qml/GridItem.qml
+@@ -45,6 +45,9 @@ T.ItemDelegate {
+     // if true, texts are horizontally centered, provided it can fit in pictureWidth
+     property bool textAlignHCenter: false
+ 
++    // Juxtopposed: watched items have a dimmer title
++    property bool titleDimmed: false
++
+     // if the item is selected
+     property bool selected: false
+ 
+@@ -357,9 +360,12 @@ T.ItemDelegate {
+                 id: titleLabel
+ 
+                 height: implicitHeight
++                // Juxtopposed: 16px regular titles
++                font.pixelSize: VLCStyle.fontSize_xlarge
++                font.weight: Font.Normal
+                 color: root.selected
+                     ? theme.fg.highlight
+-                    : theme.fg.primary
++                    : (root.titleDimmed ? theme.fg.secondary : theme.fg.primary)
+             }
+         }
+ 
+diff --git a/modules/gui/qt/widgets/qml/VideoProgressBar.qml b/modules/gui/qt/widgets/qml/VideoProgressBar.qml
+index f10918b..b8d5528 100644
+--- a/modules/gui/qt/widgets/qml/VideoProgressBar.qml
++++ b/modules/gui/qt/widgets/qml/VideoProgressBar.qml
+@@ -31,6 +31,9 @@ Item {
+     property real value: 0
+     property int radius: implicitHeight
+ 
++    // Juxtopposed: transparent on the video grid, where only the watched part shows
++    property color backgroundColor: "white"
++
+     readonly property ColorContext colorContext: ColorContext {
+         id: theme
+         colorSet: ColorContext.Slider
+@@ -39,6 +42,8 @@ Item {
+     Rectangle {
+         id: rectangle
+ 
++        visible: progressBar.backgroundColor.a > 0
++
+         anchors.left: parent.left
+         anchors.right: parent.right
+         anchors.bottom: parent.bottom
+@@ -47,7 +52,7 @@ Item {
+                          parent.height + radius) //the top radius section should be always clipped
+ 
+         //FIXME do we want it always white or do we want it to change with the theme
+-        color: "white"
++        color: progressBar.backgroundColor
+         radius: progressBar.radius
+ 
+         gradient: Gradient {
+@@ -56,4 +61,27 @@ Item {
+             GradientStop { position: progressBar.value + (1. / rectangle.width); color: rectangle.color }
+         }
+     }
++
++    // Juxtopposed: only the watched part, cut at the progress point so it
++    // keeps the rounded corner of the thumbnail on the left
++    Item {
++        visible: !rectangle.visible
++
++        anchors.left: parent.left
++        anchors.top: parent.top
++        anchors.bottom: parent.bottom
++        width: parent.width * progressBar.value
++
++        clip: true
++
++        Rectangle {
++            anchors.left: parent.left
++            anchors.bottom: parent.bottom
++
++            width: progressBar.width
++            height: rectangle.height
++            radius: progressBar.radius
++            color: theme.fg.primary
++        }
++    }
+ }
+-- 
+2.45.0.windows.1
+

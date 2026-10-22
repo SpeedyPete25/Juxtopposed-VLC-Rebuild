@@ -10,6 +10,17 @@ FULL=0
 [ "${1:-}" = "--full" ] && FULL=1
 
 mkdir -p "$ROOT/dist"
+
+# Start Docker Desktop if its engine is not running yet (Windows).
+if ! docker info >/dev/null 2>&1; then
+  DOCKER_DESKTOP="/c/Program Files/Docker/Docker/Docker Desktop.exe"
+  [ -x "$DOCKER_DESKTOP" ] || { echo "Docker is not running; start it and retry" >&2; exit 1; }
+  echo "Starting Docker Desktop..."
+  "$DOCKER_DESKTOP" >/dev/null 2>&1 &
+  for _ in $(seq 60); do docker info >/dev/null 2>&1 && break; sleep 3; done
+  docker info >/dev/null 2>&1 || { echo "Docker did not start in time" >&2; exit 1; }
+fi
+
 docker volume create "$VOLUME" >/dev/null
 
 # A running test instance keeps dist/vlc's DLLs locked; stop only that one.

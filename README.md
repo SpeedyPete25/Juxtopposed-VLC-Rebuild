@@ -19,7 +19,7 @@ implemented in VLC 4's real Qt/QML interface, as patches on top of upstream VLC.
 
 ```sh
 scripts/setup.sh            # once
-scripts/build.sh            # incremental after the first (~minutes) build
+scripts/build.sh            # incremental after the first (~minutes) build; starts Docker Desktop if needed
 powershell -File scripts/run.ps1 -Media dist/media/test-clip.mp4 -Shot shot.png
 ```
 
@@ -48,7 +48,8 @@ tracks popup as a floating menu card, player icons (stop, skip forward,
 repeat, shuffle, mute, record, snapshot, info, chevrons, bookmark), library
 page headers (back/forward, breadcrumb, item count, sort, view, inline search),
 grid cards (rounder covers, 16px titles; video cards with a dimmed title and an
-orange progress line inside the thumbnail once started).
+orange progress line inside the thumbnail once started), library side bar as
+an inset rounded card on a single dark background.
 
 Not yet: library browsing inside the player side panel, settings window,
 onboarding, dialogs, context menus, light theme, library icons.
