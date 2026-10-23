@@ -1,0 +1,105 @@
+From 7151fe6cf310ec36f20bddbdcd583a86571a7fdd Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Thu, 22 Oct 2026 20:42:47 +1030
+Subject: [PATCH] qt: Juxtopposed library side bar card
+
+The side bar becomes a rounded #191919 card inset by 8px, and the area under the title bar takes the content color instead of the chrome color, so the content no longer sits in a framed panel. Drops the side bar's divider line and the top-left corner filler that blended the content panel into the old side bar.
+---
+ .../gui/qt/maininterface/qml/MainDisplay.qml  | 33 +++++++++++++------
+ modules/gui/qt/style/VLCStyle.qml             |  2 ++
+ 2 files changed, 25 insertions(+), 10 deletions(-)
+
+diff --git a/modules/gui/qt/maininterface/qml/MainDisplay.qml b/modules/gui/qt/maininterface/qml/MainDisplay.qml
+index 1973fed..1b0c5e8 100644
+--- a/modules/gui/qt/maininterface/qml/MainDisplay.qml
++++ b/modules/gui/qt/maininterface/qml/MainDisplay.qml
+@@ -297,12 +297,12 @@ FocusScope {
+ 
+         Navigation.parentItem: g_mainDisplay
+ 
+-        // Juxtopposed: the library content is a rounded panel inset into the
+-        // window chrome, so the chrome color shows around it.
++        // Juxtopposed: the area under the title bar has the content color; the
++        // side bar is a rounded card inset into it.
+         Rectangle {
+             anchors.fill: parent
+             z: 0
+-            color: chromeTheme.bg.primary
++            color: theme.bg.primary
+         }
+ 
+         Rectangle {
+@@ -482,7 +482,8 @@ FocusScope {
+ 
+                     z: 99
+                     color: sidebar.background.color
+-                    visible: sidebar.visible && (stackViewTopLeftRadiusRectangle.topLeftRadius !== undefined)
++                    // Juxtopposed: the side bar is a separate card now, nothing to blend into
++                    visible: false
+ 
+                     anchors.left: stackView.left
+                     anchors.leftMargin: -1
+@@ -576,6 +577,7 @@ FocusScope {
+             width: VLCStyle.isScreenReallySmall ? 0.0 : collapsedWidth
+ 
+             property real collapsedWidth: VLCStyle.icon_normal + VLCStyle.margin_small + VLCStyle.margin_xsmall + VLCStyle.applicationHorizontalMargin
++                                          + 2 * VLCStyle.juxtSideBar_inset
+ 
+             delegateShowText: (state === "expanded")
+ 
+@@ -585,14 +587,25 @@ FocusScope {
+ 
+             property int maximumWidth: Math.max(minimumWidth, (g_mainDisplay.width + sidebarResizeHandle.width) / 3)
+ 
+-            topPadding: 0
+-            leftPadding: 0
+-            rightPadding: sidebarResizeHandle.visible ? sidebarResizeHandle.visualBorder.width : 0.0
+-            bottomPadding: VLCStyle.applicationVerticalMargin + VLCStyle.margin_small
++            // Juxtopposed: a rounded #191919 card inset by 8px
++            topInset: VLCStyle.juxtSideBar_inset
++            leftInset: VLCStyle.juxtSideBar_inset
++            rightInset: VLCStyle.juxtSideBar_inset
++            bottomInset: VLCStyle.juxtSideBar_inset
++
++            topPadding: VLCStyle.juxtSideBar_inset + VLCStyle.margin_xsmall
++            leftPadding: VLCStyle.juxtSideBar_inset
++            rightPadding: VLCStyle.juxtSideBar_inset
++            bottomPadding: VLCStyle.juxtSideBar_inset + VLCStyle.applicationVerticalMargin + VLCStyle.margin_small
+ 
+             safeAreaLeftMargin: VLCStyle.applicationHorizontalMargin
+ 
+-            useAcrylic: false // Juxtopposed: solid chrome, like the title bar
++            useAcrylic: false
++
++            background: Rectangle {
++                color: chromeTheme.bg.secondary
++                radius: VLCStyle.juxtSideBar_radius
++            }
+ 
+             NavigationBarContextMenu {
+                 id: navigationBarContextMenu
+@@ -685,7 +698,7 @@ FocusScope {
+                 atRight: true
+ 
+                 resizeHandle.visible: (sidebar.state === "expanded") && !VLCStyle.isScreenSmall
+-                visualBorder.visible: !topLeftCornerBackground.visible
++                visualBorder.visible: false // Juxtopposed: the card edge is enough
+ 
+                 minimumWidth: sidebar.minimumWidth
+                 maximumWidth: sidebar.maximumWidth
+diff --git a/modules/gui/qt/style/VLCStyle.qml b/modules/gui/qt/style/VLCStyle.qml
+index 98c6d64..82be1ca 100644
+--- a/modules/gui/qt/style/VLCStyle.qml
++++ b/modules/gui/qt/style/VLCStyle.qml
+@@ -356,6 +356,8 @@ QtObject {
+     readonly property real juxtMenu_radius: MainCtx.dp(8, scale)
+     readonly property int juxtMenu_margin: MainCtx.dp(12, scale)
+     readonly property int juxtHeader_spacing: MainCtx.dp(20, scale)
++    readonly property int juxtSideBar_inset: MainCtx.dp(8, scale)
++    readonly property real juxtSideBar_radius: MainCtx.dp(6, scale)
+     readonly property int juxtSearch_width: MainCtx.dp(325, scale)
+     readonly property int juxtSearch_minWidth: MainCtx.dp(160, scale)
+ 
+-- 
+2.45.0.windows.1
+

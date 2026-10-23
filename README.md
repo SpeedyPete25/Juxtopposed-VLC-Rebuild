@@ -49,7 +49,11 @@ repeat, shuffle, mute, record, snapshot, info, chevrons, bookmark), library
 page headers (back/forward, breadcrumb, item count, sort, view, inline search),
 grid cards (rounder covers, 16px titles; video cards with a dimmed title and an
 orange progress line inside the thumbnail once started), library side bar as
-an inset rounded card on a single dark background.
+an inset rounded card on a single dark background, settings window rebuilt in
+QML (13 categories, plain-language rows over VLC's options, info icons, search,
+advanced options per category; the classic dialog stays reachable).
 
-Not yet: library browsing inside the player side panel, settings window,
-onboarding, dialogs, context menus, light theme, library icons.
+Not yet: library browsing inside the player side panel, settings extras
+(accent color, interface language, equalizer board, keyboard shortcuts
+dialog, extensions list), in-player quick settings sidebar, onboarding,
+dialogs, context menus, light theme, library icons.
