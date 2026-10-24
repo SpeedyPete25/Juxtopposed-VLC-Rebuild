@@ -1,0 +1,2341 @@
+From f9d7a64f90e923e3471eb9d9f5337a6b1aa0fa6e Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Fri, 23 Oct 2026 18:39:34 +1030
+Subject: [PATCH] qt: Juxtopposed settings window
+
+Rebuilds the settings window in QML following the redesign: a search field and App / Media / System categories on the left, and pages of plain-language rows with info icons, ending in Advanced Options that list the core VLC options of the category.
+
+VLCSettings (VLC.Dialogs) gives QML access to any VLC option: its value, type, texts and choices, writing values and saving the configuration file, listing the core options of VLC sections, and picking files or folders. prefsDialog() now asks the interface to toggle the new window; the original dialog stays available as classicPrefsDialog(). Adds ColorSchemeModel::setScheme() for the theme switch and icon glyphs for the settings categories.
+---
+ modules/gui/qt/Makefile.am                    |   6 +
+ .../qt/dialogs/dialogs/qml/SettingsPages.qml  | 314 +++++++++
+ .../qt/dialogs/dialogs/qml/SettingsRow.qml    | 613 ++++++++++++++++++
+ .../qt/dialogs/dialogs/qml/SettingsWindow.qml | 467 +++++++++++++
+ modules/gui/qt/dialogs/dialogs_provider.cpp   |  11 +
+ modules/gui/qt/dialogs/dialogs_provider.hpp   |   5 +
+ .../qt/dialogs/preferences/vlc_settings.cpp   | 267 ++++++++
+ .../qt/dialogs/preferences/vlc_settings.hpp   |  70 ++
+ modules/gui/qt/maininterface/mainui.cpp       |   3 +
+ .../qt/maininterface/qml/MainInterface.qml    |  29 +
+ modules/gui/qt/meson.build                    |   6 +
+ modules/gui/qt/pixmaps/VLCIcons.json          |   7 +-
+ modules/gui/qt/pixmaps/VLCIcons.ttf           | Bin 21152 -> 22448 bytes
+ .../pixmaps/icons/juxt/interface_cursor.svg   |  34 +
+ .../gui/qt/pixmaps/icons/juxt/keyboard.svg    |  66 ++
+ modules/gui/qt/pixmaps/icons/juxt/plugins.svg |  30 +
+ .../gui/qt/pixmaps/icons/juxt/preferences.svg |  50 ++
+ modules/gui/qt/pixmaps/icons/juxt/privacy.svg |  30 +
+ modules/gui/qt/style/vlcicons.hpp             |  10 +
+ modules/gui/qt/util/color_scheme_model.cpp    |  12 +
+ modules/gui/qt/util/color_scheme_model.hpp    |   3 +
+ 21 files changed, 2032 insertions(+), 1 deletion(-)
+ create mode 100644 modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml
+ create mode 100644 modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
+ create mode 100644 modules/gui/qt/dialogs/dialogs/qml/SettingsWindow.qml
+ create mode 100644 modules/gui/qt/dialogs/preferences/vlc_settings.cpp
+ create mode 100644 modules/gui/qt/dialogs/preferences/vlc_settings.hpp
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/interface_cursor.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/keyboard.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/plugins.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/preferences.svg
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/privacy.svg
+
+diff --git a/modules/gui/qt/Makefile.am b/modules/gui/qt/Makefile.am
+index 5034ddd..fc3fca4 100644
+--- a/modules/gui/qt/Makefile.am
++++ b/modules/gui/qt/Makefile.am
+@@ -147,6 +147,8 @@ libqt_plugin_la_SOURCES = \
+ 	dialogs/preferences/expert_view.hpp \
+ 	dialogs/preferences/preferences.cpp \
+ 	dialogs/preferences/preferences.hpp \
++	dialogs/preferences/vlc_settings.cpp \
++	dialogs/preferences/vlc_settings.hpp \
+ 	dialogs/preferences/preferences_widgets.cpp \
+ 	dialogs/preferences/preferences_widgets.hpp \
+ 	dialogs/preferences/simple_preferences.cpp \
+@@ -433,6 +435,7 @@ nodist_libqt_plugin_la_SOURCES = \
+ 	dialogs/preferences/expert_model.moc.cpp \
+ 	dialogs/preferences/expert_view.moc.cpp \
+ 	dialogs/preferences/preferences.moc.cpp \
++	dialogs/preferences/vlc_settings.moc.cpp \
+ 	dialogs/preferences/preferences_widgets.moc.cpp \
+ 	dialogs/preferences/simple_preferences.moc.cpp \
+ 	dialogs/sout/convert.moc.cpp \
+@@ -1043,6 +1046,9 @@ libqml_module_dialogs_a_QML = \
+ 	dialogs/dialogs/qml/CustomDialog.qml \
+ 	dialogs/dialogs/qml/Dialogs.qml \
+ 	dialogs/dialogs/qml/ModalDialog.qml \
++	dialogs/dialogs/qml/SettingsPages.qml \
++	dialogs/dialogs/qml/SettingsRow.qml \
++	dialogs/dialogs/qml/SettingsWindow.qml \
+ 	dialogs/dialogs/qml/WindowDialog.qml \
+ 	dialogs/toolbar/qml/EditorDNDDelegate.qml \
+ 	dialogs/toolbar/qml/EditorDNDView.qml\
+diff --git a/modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml b/modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml
+new file mode 100644
+index 0000000..74b9d33
+--- /dev/null
++++ b/modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml
+@@ -0,0 +1,314 @@
++/*****************************************************************************
++ * Copyright (C) 2026 VLC authors and VideoLAN
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * ( at your option ) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
++ *****************************************************************************/
++import QtQml
++
++import VLC.Style
++
++// Juxtopposed: the pages of the settings window, following the redesign.
++// Each row names a VLC option (read and written through VLCSettings) with
++// the redesign's wording; "choices" replaces number codes with words.
++// "advanced" lists the VLC sections (SUBCAT_*) whose core options appear
++// under Advanced Options.
++QtObject {
++    readonly property var categories: [
++        {
++            group: qsTr("App"), name: qsTr("General"), title: qsTr("Global Settings"),
++            icon: VLCIcons.preferences,
++            sections: [
++                { title: qsTr("Appearance"), rows: [
++                    { special: "theme", label: qsTr("Theme") }
++                ] },
++                { title: qsTr("Startup"), rows: [
++                    { option: "qt-error-dialogs", label: qsTr("Show confirmation and error dialogs") },
++                    { option: "qt-updates-notif", label: qsTr("Check for updates automatically") }
++                ] },
++                { title: qsTr("Diagnostics"), rows: [
++                    { option: "file-logging", label: qsTr("Save a log") },
++                    { option: "logfile", label: qsTr("Log file") },
++                    { option: "log-verbose", label: qsTr("Log details"), choices: [
++                        { value: -1, text: qsTr("Same as VLC") },
++                        { value: 0, text: qsTr("Errors only") },
++                        { value: 1, text: qsTr("Errors and warnings") },
++                        { value: 2, text: qsTr("Everything (debug)") }
++                    ] }
++                ] }
++            ],
++            extras: [
++                { special: "button", label: qsTr("Open configurations folder"), text: qsTr("Open"), action: "openConfigFolder" },
++                { special: "button", label: qsTr("Reset all settings"), text: qsTr("Reset"), action: "resetAll", accent: true },
++                { special: "button", label: qsTr("Classic preferences"), text: qsTr("Open"), action: "classic" }
++            ],
++            advanced: [602]
++        },
++        {
++            group: qsTr("App"), name: qsTr("Interface"), title: qsTr("Interface Settings"),
++            icon: VLCIcons.interface_cursor,
++            sections: [
++                { title: qsTr("Window"), rows: [
++                    { option: "embedded-video", label: qsTr("Play video inside main window") },
++                    { option: "qt-video-autoresize", label: qsTr("Resize window to fit video") },
++                    { option: "video-on-top", label: qsTr("Keep window above other windows") },
++                    { option: "video-deco", label: qsTr("Show window decorations") },
++                    { option: "qt-name-in-title", label: qsTr("Show file title in the title bar") },
++                    { option: "qt-fullscreen-screennumber", label: qsTr("Open fullscreen on screen") }
++                ] },
++                { title: qsTr("Playback Controls"), rows: [
++                    { option: "qt-minimal-view", label: qsTr("Start in compact mode") },
++                    { option: "qt-pin-controls", label: qsTr("Always show the controls") },
++                    { option: "mouse-hide-timeout", label: qsTr("Hide after"), unit: "ms" },
++                    { option: "qt-fs-controller", label: qsTr("Show controls in fullscreen") }
++                ] }
++            ],
++            advanced: [101, 102]
++        },
++        {
++            group: qsTr("App"), name: qsTr("Privacy"), title: qsTr("Privacy Settings"),
++            icon: VLCIcons.privacy,
++            sections: [
++                { title: qsTr("History"), rows: [
++                    { option: "qt-recentplay", label: qsTr("Save recently played items") },
++                    { option: "qt-continue", label: qsTr("Remember the playback position") },
++                    { option: "qt-recentplay-filter", label: qsTr("Never remember items matching") }
++                ] },
++                { title: qsTr("Network"), rows: [
++                    { option: "metadata-network-access", label: qsTr("Fetch titles and cover art from the internet") }
++                ] }
++            ],
++            advanced: []
++        },
++        {
++            group: qsTr("App"), name: qsTr("Controls"), title: qsTr("Controls Settings"),
++            icon: VLCIcons.keyboard,
++            sections: [
++                { title: qsTr("Keyboard Shortcuts"), rows: [
++                    { special: "button", label: qsTr("Edit keyboard shortcuts"), text: qsTr("Edit"), action: "classic" }
++                ] },
++                { title: qsTr("Skip Amounts"), rows: [
++                    { option: "extrashort-jump-size", label: qsTr("Very short skip"), unit: "s" },
++                    { option: "short-jump-size", label: qsTr("Short skip"), unit: "s" },
++                    { option: "medium-jump-size", label: qsTr("Medium skip"), unit: "s" },
++                    { option: "long-jump-size", label: qsTr("Long skip"), unit: "s" }
++                ] },
++                { title: qsTr("Mouse"), rows: [
++                    { option: "hotkeys-y-wheel-mode", label: qsTr("Scroll wheel") },
++                    { option: "hotkeys-x-wheel-mode", label: qsTr("Horizontal scroll") },
++                    { option: "mouse-events", label: qsTr("Use the mouse on the video") },
++                    { option: "keyboard-events", label: qsTr("Use the keyboard on the video") }
++                ] }
++            ],
++            advanced: [103]
++        },
++        {
++            group: qsTr("Media"), name: qsTr("Playback"), title: qsTr("Playback Settings"),
++            icon: VLCIcons.play,
++            sections: [
++                { title: qsTr("Startup"), rows: [
++                    { option: "qt-continue", label: qsTr("Continue from where you left off") },
++                    { option: "playlist-autostart", label: qsTr("Start playing as soon as a file opens") },
++                    { option: "start-paused", label: qsTr("Start paused") },
++                    { option: "rate", label: qsTr("Default playback speed"), unit: "x" }
++                ] },
++                { title: qsTr("Tracks"), rows: [
++                    { option: "preferred-resolution", label: qsTr("Preferred video quality") },
++                    { option: "audio-language", label: qsTr("Preferred audio language") },
++                    { option: "sub-language", label: qsTr("Preferred subtitle language") },
++                    { option: "menu-language", label: qsTr("Preferred menu language") },
++                    { option: "audio-track", label: qsTr("Default audio track") },
++                    { option: "sub-track", label: qsTr("Default subtitle track") }
++                ] },
++                { title: qsTr("Order"), rows: [
++                    { option: "repeat", label: qsTr("Repeat the current item") },
++                    { option: "loop", label: qsTr("Repeat all") },
++                    { option: "random", label: qsTr("Shuffle") },
++                    { option: "play-and-stop", label: qsTr("Stop after each item") },
++                    { option: "play-and-exit", label: qsTr("Quit when playback finishes") }
++                ] }
++            ],
++            advanced: [701, 401]
++        },
++        {
++            group: qsTr("Media"), name: qsTr("Video"), title: qsTr("Video Settings"),
++            icon: VLCIcons.topbar_video,
++            sections: [
++                { title: qsTr("Output"), rows: [
++                    { option: "video", label: qsTr("Enable video") },
++                    { option: "fullscreen", label: qsTr("Start videos in fullscreen") },
++                    { option: "disable-screensaver", label: qsTr("Stop the screensaver during playback") },
++                    { option: "video-wallpaper", label: qsTr("Play video as desktop wallpaper") }
++                ] },
++                { title: qsTr("Picture"), rows: [
++                    { option: "brightness", label: qsTr("Brightness") },
++                    { option: "contrast", label: qsTr("Contrast") },
++                    { option: "saturation", label: qsTr("Saturation") },
++                    { option: "hue", label: qsTr("Hue") },
++                    { option: "gamma", label: qsTr("Gamma") }
++                ] },
++                { title: qsTr("Deinterlacing & Framing"), rows: [
++                    { option: "deinterlace", label: qsTr("Deinterlacing") },
++                    { option: "deinterlace-mode", label: qsTr("Method") },
++                    { option: "aspect-ratio", label: qsTr("Aspect ratio") },
++                    { option: "crop", label: qsTr("Crop") }
++                ] }
++            ],
++            advanced: [301, 302, 303]
++        },
++        {
++            group: qsTr("Media"), name: qsTr("Audio"), title: qsTr("Audio Settings"),
++            icon: VLCIcons.visualization,
++            sections: [
++                { title: qsTr("Output"), rows: [
++                    { option: "audio", label: qsTr("Enable audio") },
++                    { option: "volume-save", label: qsTr("Remember the volume") },
++                    { option: "audio-desync", label: qsTr("Audio delay"), unit: "ms" }
++                ] },
++                { title: qsTr("Loudness"), rows: [
++                    { option: "audio-replay-gain-mode", label: qsTr("Replay gain") },
++                    { option: "audio-replay-gain-preamp", label: qsTr("Replay gain preamp"), unit: "dB" }
++                ] },
++                { title: qsTr("Effects"), rows: [
++                    { option: "equalizer-preset", label: qsTr("Equalizer preset") },
++                    { option: "equalizer-2pass", label: qsTr("2 pass") },
++                    { option: "audio-visual", label: qsTr("Audio visualizer") }
++                ] }
++            ],
++            advanced: [201, 202, 203]
++        },
++        {
++            group: qsTr("Media"), name: qsTr("Subtitles"), title: qsTr("Subtitle Settings"),
++            icon: VLCIcons.audiosub,
++            sections: [
++                { title: qsTr("Tracks & Languages"), rows: [
++                    { option: "spu", label: qsTr("Enable subtitles") },
++                    { option: "sub-language", label: qsTr("Preferred language") },
++                    { option: "subsdec-encoding", label: qsTr("Text encoding") }
++                ] },
++                { title: qsTr("Loading Subtitles"), rows: [
++                    { option: "sub-autodetect-file", label: qsTr("Load subtitle files automatically") },
++                    { option: "sub-autodetect-fuzzy", label: qsTr("File name matching"), choices: [
++                        { value: 0, text: qsTr("Off") },
++                        { value: 1, text: qsTr("Any subtitle file") },
++                        { value: 2, text: qsTr("Contains the video's name") },
++                        { value: 3, text: qsTr("Video's name with extra characters") },
++                        { value: 4, text: qsTr("Exactly the video's name") }
++                    ] }
++                ] },
++                { title: qsTr("Appearance"), rows: [
++                    { option: "freetype-font", label: qsTr("Font") },
++                    { option: "freetype-rel-fontsize", label: qsTr("Font size") },
++                    { option: "freetype-bold", label: qsTr("Bold") },
++                    { option: "freetype-color", label: qsTr("Text color") },
++                    { option: "freetype-opacity", label: qsTr("Text opacity") },
++                    { option: "freetype-outline-thickness", label: qsTr("Outline thickness") },
++                    { option: "freetype-outline-color", label: qsTr("Outline color") },
++                    { option: "freetype-shadow-opacity", label: qsTr("Shadow opacity") },
++                    { option: "freetype-background-color", label: qsTr("Background color") },
++                    { option: "freetype-background-opacity", label: qsTr("Background opacity") },
++                    { option: "sub-margin", label: qsTr("Vertical position"), unit: "px" }
++                ] },
++                { title: qsTr("On-Screen Messages"), rows: [
++                    { option: "osd", label: qsTr("Show feedback for shortcuts") },
++                    { option: "video-title-show", label: qsTr("Show filenames when a video starts") },
++                    { option: "video-title-timeout", label: qsTr("Show filenames for"), unit: "ms" },
++                    { option: "video-title-position", label: qsTr("Filename position") }
++                ] }
++            ],
++            advanced: [305, 406]
++        },
++        {
++            group: qsTr("Media"), name: qsTr("Library"), title: qsTr("Library Settings"),
++            icon: VLCIcons.folder,
++            sections: [
++                { title: qsTr("Opening Files"), rows: [
++                    { option: "one-instance", label: qsTr("Only allow one VLC window") },
++                    { option: "one-instance-when-started-from-file", label: qsTr("Use the open window for files opened from the file manager") },
++                    { option: "recursive", label: qsTr("When opening a folder") },
++                    { option: "show-hiddenfiles", label: qsTr("Show hidden files") }
++                ] },
++                { title: qsTr("Metadata & Artwork"), rows: [
++                    { option: "metadata-network-access", label: qsTr("Fetch titles and artwork from the internet") },
++                    { option: "media-library", label: qsTr("Use the media library") }
++                ] }
++            ],
++            advanced: [702]
++        },
++        {
++            group: qsTr("System"), name: qsTr("Network"), title: qsTr("Network Settings"),
++            icon: VLCIcons.topbar_network,
++            sections: [
++                { title: qsTr("Buffering"), rows: [
++                    { option: "network-caching", label: qsTr("Network buffering"), unit: "ms" },
++                    { option: "file-caching", label: qsTr("File buffering"), unit: "ms" }
++                ] },
++                { title: qsTr("Proxy"), rows: [
++                    { option: "http-proxy", label: qsTr("HTTP proxy") },
++                    { option: "http-proxy-pwd", label: qsTr("HTTP proxy password") }
++                ] },
++                { title: qsTr("Security"), rows: [
++                    { option: "gnutls-system-trust", label: qsTr("Verify certificates against the system trust store") }
++                ] }
++            ],
++            advanced: [603, 402]
++        },
++        {
++            group: qsTr("System"), name: qsTr("Performance"), title: qsTr("Performance Settings"),
++            icon: VLCIcons.preferences,
++            sections: [
++                { title: qsTr("Decoding"), rows: [
++                    { option: "hw-dec", label: qsTr("Hardware-accelerated decoding") },
++                    { option: "dec-dev", label: qsTr("Decoding device") },
++                    { option: "avcodec-skiploopfilter", label: qsTr("Skip the H.264 loop filter") },
++                    { option: "avcodec-threads", label: qsTr("Decoding threads") }
++                ] },
++                { title: qsTr("Smooth Playback"), rows: [
++                    { option: "drop-late-frames", label: qsTr("Drop frames when the system can't keep up") },
++                    { option: "high-priority", label: qsTr("Use real-time priority") }
++                ] },
++                { title: qsTr("Developer"), rows: [
++                    { option: "clock-synchro", label: qsTr("Clock synchronization") },
++                    { option: "clock-jitter", label: qsTr("Clock jitter"), unit: "ms" }
++                ] }
++            ],
++            advanced: [404, 405, 403]
++        },
++        {
++            group: qsTr("System"), name: qsTr("Recording"), title: qsTr("Recording Settings"),
++            icon: VLCIcons.record,
++            sections: [
++                { title: qsTr("Recording"), rows: [
++                    { option: "input-record-path", label: qsTr("Save recordings to") },
++                    { option: "input-record-native", label: qsTr("Record without re-encoding when possible") }
++                ] },
++                { title: qsTr("Streaming"), rows: [
++                    { option: "sout-keep", label: qsTr("Keep the stream output open") },
++                    { option: "sout-all", label: qsTr("Stream all tracks") }
++                ] }
++            ],
++            advanced: [501, 502]
++        },
++        {
++            group: qsTr("System"), name: qsTr("Extensions"), title: qsTr("Extensions"),
++            icon: VLCIcons.plugins,
++            sections: [
++                { title: qsTr("Extensions"), rows: [
++                    { special: "button", label: qsTr("Extensions, add-ons and plugins"), text: qsTr("Manage"), action: "plugins" }
++                ] }
++            ],
++            advanced: []
++        }
++    ]
++}
+diff --git a/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml b/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
+new file mode 100644
+index 0000000..be7d3a6
+--- /dev/null
++++ b/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
+@@ -0,0 +1,613 @@
++/*****************************************************************************
++ * Copyright (C) 2026 VLC authors and VideoLAN
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * ( at your option ) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
++ *****************************************************************************/
++import QtQuick
++import QtQuick.Layouts
++import QtQuick.Templates as T
++
++import VLC.MainInterface
++import VLC.Style
++import VLC.Widgets as Widgets
++import VLC.Dialogs
++
++// Juxtopposed: one row of the settings window: a label with an info icon,
++// and a control picked from the type of the VLC option it edits.
++Item {
++    id: root
++
++    // { option, label, choices, unit } or { special, label, text, action, accent }
++    required property var row
++
++    // Option description from VLCSettings, refreshed after a reset
++    property var opt: _load()
++
++    readonly property bool special: !!row.special
++    readonly property var choices: row.choices ?? opt?.choices ?? []
++    readonly property string label: row.label ?? opt?.text ?? ""
++
++    readonly property real controlWidth: VLCStyle.dp(320, VLCStyle.scale)
++
++    // Rows for options missing from this VLC build are left out
++    visible: special || !!opt?.name
++
++    implicitWidth: layout.implicitWidth
++    implicitHeight: visible ? Math.max(layout.implicitHeight, VLCStyle.dp(36, VLCStyle.scale)) : 0
++
++    function _load() {
++        return row.option ? VLCSettings.option(row.option) : null
++    }
++
++    function _set(value) {
++        if (VLCSettings.setValue(row.option, value))
++            opt = _load()
++    }
++
++    Connections {
++        target: VLCSettings
++        function onReset() { root.opt = root._load() }
++    }
++
++    readonly property ColorContext colorContext: ColorContext {
++        id: theme
++        colorSet: ColorContext.Window
++    }
++
++    ColorContext {
++        id: fieldTheme
++        colorSet: ColorContext.Slider   // #090909 fields, #371F06 accent fills
++    }
++
++    ColorContext {
++        id: viewTheme
++        colorSet: ColorContext.View
++    }
++
++    RowLayout {
++        id: layout
++
++        anchors.fill: parent
++        spacing: VLCStyle.dp(16, VLCStyle.scale)
++
++        Row {
++            Layout.fillWidth: true
++            Layout.alignment: Qt.AlignVCenter
++
++            spacing: VLCStyle.dp(8, VLCStyle.scale)
++
++            T.Label {
++                id: labelText
++
++                anchors.verticalCenter: parent.verticalCenter
++                width: Math.min(implicitWidth, root.width - root.controlWidth - VLCStyle.dp(48, VLCStyle.scale))
++
++                text: root.label
++                color: viewTheme.fg.primary
++                font.pixelSize: VLCStyle.fontSize_large
++                elide: Text.ElideRight
++            }
++
++            // Every setting has an info icon with VLC's explanation
++            Widgets.IconLabel {
++                id: infoIcon
++
++                anchors.verticalCenter: parent.verticalCenter
++
++                visible: !!root.opt?.longText || (!!root.opt?.text && root.opt.text !== root.label)
++                text: VLCIcons.info
++                color: theme.fg.secondary
++                font.pixelSize: VLCStyle.icon_small * 1.4
++
++                HoverHandler { id: infoHover }
++
++                T.ToolTip.visible: infoHover.hovered
++                T.ToolTip.delay: 0
++                T.ToolTip.text: {
++                    const parts = []
++                    if (root.opt?.text && root.opt.text !== root.label)
++                        parts.push(root.opt.text)
++                    if (root.opt?.longText)
++                        parts.push(root.opt.longText)
++                    return parts.join("\n\n")
++                }
++            }
++        }
++
++        Loader {
++            Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
++
++            sourceComponent: {
++                if (root.row.special === "theme")
++                    return themeControl
++                if (root.row.special === "button")
++                    return buttonControl
++                if (!root.opt?.name)
++                    return null
++
++                switch (root.opt.type) {
++                case "bool":
++                    return toggleControl
++                case "color":
++                    return colorControl
++                case "file":
++                case "directory":
++                    return pathControl
++                }
++                if (root.choices.length > 0)
++                    return dropdownControl
++                if (root.opt.type === "int" || root.opt.type === "float") {
++                    const range = root.opt.max - root.opt.min
++                    if (root.opt.max > root.opt.min && range <= 1000 && !root.row.unit)
++                        return sliderControl
++                    return numberControl
++                }
++                return textControl
++            }
++        }
++    }
++
++    // ON/OFF switch: a square knob with the state written next to it
++    Component {
++        id: toggleControl
++
++        T.AbstractButton {
++            id: toggle
++
++            readonly property bool on: !!root.opt.value
++
++            implicitWidth: VLCStyle.dp(68, VLCStyle.scale)
++            implicitHeight: VLCStyle.dp(32, VLCStyle.scale)
++
++            Accessible.role: Accessible.CheckBox
++            Accessible.name: root.label
++            Accessible.checked: on
++            // Screen readers (and UI Automation) toggle checkboxes rather than click them
++            Accessible.onToggleAction: root._set(!on)
++            Accessible.onPressAction: root._set(!on)
++
++            onClicked: root._set(!on)
++
++            background: Rectangle {
++                radius: VLCStyle.dp(4, VLCStyle.scale)
++                color: toggle.on ? fieldTheme.bg.secondary : theme.bg.secondary
++                border.width: VLCStyle.border
++                border.color: toggle.on ? fieldTheme.bg.secondary : viewTheme.border
++
++                Rectangle {
++                    x: toggle.on ? parent.width - width - VLCStyle.dp(4, VLCStyle.scale) : VLCStyle.dp(4, VLCStyle.scale)
++                    anchors.verticalCenter: parent.verticalCenter
++                    width: VLCStyle.dp(24, VLCStyle.scale)
++                    height: width
++                    radius: VLCStyle.dp(3, VLCStyle.scale)
++                    color: toggle.on ? theme.accent : viewTheme.border
++
++                    Behavior on x { NumberAnimation { duration: VLCStyle.duration_short } }
++                }
++
++                T.Label {
++                    x: toggle.on ? VLCStyle.dp(10, VLCStyle.scale) : parent.width - width - VLCStyle.dp(8, VLCStyle.scale)
++                    anchors.verticalCenter: parent.verticalCenter
++                    text: toggle.on ? qsTr("ON") : qsTr("OFF")
++                    color: toggle.on ? theme.accent : theme.fg.secondary
++                    font.pixelSize: VLCStyle.fontSize_normal
++                }
++            }
++        }
++    }
++
++    // Dropdown of the option's choices (or the row's own wording)
++    Component {
++        id: dropdownControl
++
++        T.ComboBox {
++            id: combo
++
++            implicitWidth: root.controlWidth
++            implicitHeight: VLCStyle.dp(36, VLCStyle.scale)
++
++            model: root.choices
++            textRole: "text"
++            valueRole: "value"
++
++            currentIndex: {
++                for (let i = 0; i < root.choices.length; ++i) {
++                    if (String(root.choices[i].value) === String(root.opt.value))
++                        return i
++                }
++                return -1
++            }
++
++            displayText: currentIndex >= 0 ? root.choices[currentIndex].text : String(root.opt.value)
++
++            onActivated: (index) => root._set(root.choices[index].value)
++
++            background: Rectangle {
++                radius: VLCStyle.dp(4, VLCStyle.scale)
++                color: theme.bg.secondary
++                border.width: combo.visualFocus ? VLCStyle.border : 0
++                border.color: theme.accent
++            }
++
++            contentItem: T.Label {
++                leftPadding: VLCStyle.dp(14, VLCStyle.scale)
++                rightPadding: VLCStyle.dp(40, VLCStyle.scale)
++                verticalAlignment: Text.AlignVCenter
++                text: combo.displayText
++                color: viewTheme.fg.primary
++                font.pixelSize: VLCStyle.fontSize_large
++                elide: Text.ElideRight
++            }
++
++            indicator: Widgets.IconLabel {
++                x: combo.width - width - VLCStyle.dp(12, VLCStyle.scale)
++                anchors.verticalCenter: parent.verticalCenter
++                text: VLCIcons.chevron_down
++                color: viewTheme.fg.primary
++                font.pixelSize: VLCStyle.icon_normal
++            }
++
++            delegate: T.ItemDelegate {
++                required property var modelData
++                required property int index
++
++                width: combo.width - 2 * VLCStyle.dp(4, VLCStyle.scale)
++                implicitHeight: VLCStyle.dp(32, VLCStyle.scale)
++
++                highlighted: combo.highlightedIndex === index
++
++                background: Rectangle {
++                    radius: VLCStyle.dp(3, VLCStyle.scale)
++                    color: (parent.highlighted || parent.hovered) ? viewTheme.border : "transparent"
++                }
++
++                contentItem: T.Label {
++                    leftPadding: VLCStyle.dp(10, VLCStyle.scale)
++                    verticalAlignment: Text.AlignVCenter
++                    text: modelData.text
++                    color: index === combo.currentIndex ? theme.accent : viewTheme.fg.primary
++                    font.pixelSize: VLCStyle.fontSize_large
++                    elide: Text.ElideRight
++                }
++            }
++
++            popup: T.Popup {
++                y: combo.height + VLCStyle.dp(4, VLCStyle.scale)
++                width: combo.width
++                implicitHeight: Math.min(contentItem.implicitHeight + 2 * padding, VLCStyle.dp(320, VLCStyle.scale))
++                padding: VLCStyle.dp(4, VLCStyle.scale)
++
++                contentItem: ListView {
++                    clip: true
++                    implicitHeight: contentHeight
++                    model: combo.popup.visible ? combo.delegateModel : null
++                    currentIndex: combo.highlightedIndex
++                    boundsBehavior: Flickable.StopAtBounds
++                }
++
++                background: Rectangle {
++                    radius: VLCStyle.dp(6, VLCStyle.scale)
++                    color: theme.bg.secondary
++                    border.width: VLCStyle.border
++                    border.color: viewTheme.border
++                }
++            }
++        }
++    }
++
++    // Slider for small numeric ranges, with the value shown next to it
++    Component {
++        id: sliderControl
++
++        RowLayout {
++            implicitWidth: root.controlWidth
++            width: implicitWidth
++            spacing: VLCStyle.dp(12, VLCStyle.scale)
++
++            T.Slider {
++                id: slider
++
++                Layout.fillWidth: true
++                implicitHeight: VLCStyle.dp(28, VLCStyle.scale)
++
++                from: root.opt.min
++                to: root.opt.max
++                value: root.opt.value
++                stepSize: root.opt.type === "int" ? 1 : 0
++                live: true
++
++                onMoved: root._set(root.opt.type === "int" ? Math.round(value) : value)
++
++                background: Rectangle {
++                    x: slider.leftPadding
++                    y: slider.topPadding + (slider.availableHeight - height) / 2
++                    width: slider.availableWidth
++                    height: VLCStyle.dp(8, VLCStyle.scale)
++                    radius: height / 2
++                    color: theme.bg.secondary
++
++                    Rectangle {
++                        width: slider.visualPosition * parent.width
++                        height: parent.height
++                        radius: parent.radius
++                        color: fieldTheme.bg.secondary
++                    }
++                }
++
++                handle: Rectangle {
++                    x: slider.leftPadding + slider.visualPosition * (slider.availableWidth - width)
++                    y: slider.topPadding + (slider.availableHeight - height) / 2
++                    width: VLCStyle.dp(8, VLCStyle.scale)
++                    height: VLCStyle.dp(20, VLCStyle.scale)
++                    radius: VLCStyle.dp(3, VLCStyle.scale)
++                    color: theme.accent
++                }
++            }
++
++            T.Label {
++                Layout.preferredWidth: VLCStyle.dp(48, VLCStyle.scale)
++                horizontalAlignment: Text.AlignRight
++                text: root.opt.type === "int" ? String(root.opt.value) : Number(root.opt.value).toFixed(2)
++                color: viewTheme.fg.primary
++                font.pixelSize: VLCStyle.fontSize_large
++            }
++        }
++    }
++
++    // Free number field, for large ranges and values with a unit
++    Component {
++        id: numberControl
++
++        FieldBox {
++            implicitWidth: VLCStyle.dp(140, VLCStyle.scale)
++
++            text: root.opt.type === "float" ? Number(root.opt.value).toString() : String(root.opt.value)
++            unit: root.row.unit ?? ""
++            validator: root.opt.type === "float" ? doubleValidator : intValidator
++
++            onCommitted: (text) => {
++                const value = root.opt.type === "float" ? parseFloat(text) : parseInt(text)
++                if (!isNaN(value))
++                    root._set(value)
++            }
++
++            IntValidator { id: intValidator }
++            DoubleValidator { id: doubleValidator }
++        }
++    }
++
++    // Text field (password options are masked)
++    Component {
++        id: textControl
++
++        FieldBox {
++            implicitWidth: root.controlWidth
++
++            text: String(root.opt.value ?? "")
++            echoMode: root.opt.type === "password" ? TextInput.Password : TextInput.Normal
++
++            onCommitted: (text) => root._set(text)
++        }
++    }
++
++    // Path field with a Browse button
++    Component {
++        id: pathControl
++
++        RowLayout {
++            implicitWidth: root.controlWidth
++            width: implicitWidth
++            spacing: VLCStyle.dp(10, VLCStyle.scale)
++
++            FieldBox {
++                Layout.fillWidth: true
++
++                text: String(root.opt.value ?? "")
++                onCommitted: (text) => root._set(text)
++            }
++
++            FlatButton {
++                text: qsTr("Browse")
++                onClicked: {
++                    if (VLCSettings.browse(root.row.option).length > 0)
++                        root.opt = root._load()
++                }
++            }
++        }
++    }
++
++    // Color swatch with its hex value
++    Component {
++        id: colorControl
++
++        RowLayout {
++            width: implicitWidth
++            spacing: VLCStyle.dp(10, VLCStyle.scale)
++
++            Rectangle {
++                implicitWidth: VLCStyle.dp(32, VLCStyle.scale)
++                implicitHeight: VLCStyle.dp(32, VLCStyle.scale)
++                radius: VLCStyle.dp(4, VLCStyle.scale)
++                color: "#" + ("000000" + Number(root.opt.value).toString(16)).slice(-6)
++                border.width: VLCStyle.border
++                border.color: viewTheme.border
++            }
++
++            FieldBox {
++                implicitWidth: VLCStyle.dp(120, VLCStyle.scale)
++
++                text: "#" + ("000000" + Number(root.opt.value).toString(16).toUpperCase()).slice(-6)
++                validator: RegularExpressionValidator { regularExpression: /#?[0-9a-fA-F]{6}/ }
++
++                onCommitted: (text) => root._set(parseInt(text.replace("#", ""), 16))
++            }
++        }
++    }
++
++    // Dark / Light / System segmented switch for the color scheme
++    Component {
++        id: themeControl
++
++        Row {
++            spacing: VLCStyle.dp(2, VLCStyle.scale)
++
++            Repeater {
++                // ColorSchemeModel.ColorScheme: System = 0, Day = 1, Night = 2
++                model: [
++                    { scheme: 2, text: qsTr("Dark") },
++                    { scheme: 1, text: qsTr("Light") },
++                    { scheme: 0, text: qsTr("System") }
++                ]
++
++                T.AbstractButton {
++                    required property var modelData
++
++                    readonly property bool active: MainCtx.colorScheme.scheme === modelData.scheme
++
++                    width: (root.controlWidth - 2 * VLCStyle.dp(2, VLCStyle.scale)) / 3
++                    height: VLCStyle.dp(32, VLCStyle.scale)
++
++                    onClicked: MainCtx.colorScheme.setScheme(modelData.scheme)
++
++                    background: Rectangle {
++                        radius: VLCStyle.dp(4, VLCStyle.scale)
++                        color: parent.active ? fieldTheme.bg.secondary : theme.bg.secondary
++                    }
++
++                    contentItem: T.Label {
++                        horizontalAlignment: Text.AlignHCenter
++                        verticalAlignment: Text.AlignVCenter
++                        text: modelData.text
++                        color: parent.active ? theme.accent : viewTheme.fg.primary
++                        font.pixelSize: VLCStyle.fontSize_large
++                    }
++                }
++            }
++        }
++    }
++
++    // Action button (open folder, reset, classic preferences, ...)
++    Component {
++        id: buttonControl
++
++        FlatButton {
++            text: root.row.text
++            accent: !!root.row.accent
++
++            onClicked: {
++                switch (root.row.action) {
++                case "openConfigFolder":
++                    VLCSettings.openConfigFolder()
++                    break
++                case "resetAll":
++                    if (DialogsProvider.questionDialog(qsTr("Reset all VLC settings to their defaults?"), qsTr("Reset all settings")))
++                        VLCSettings.resetAll()
++                    break
++                case "classic":
++                    DialogsProvider.classicPrefsDialog()
++                    break
++                case "plugins":
++                    DialogsProvider.pluginDialog()
++                    break
++                }
++            }
++        }
++    }
++
++    // Dark rounded field used by text, number and path controls
++    component FieldBox: Rectangle {
++        id: fieldBox
++
++        // inline components do not see the ids of the enclosing file
++        ColorContext { id: fbWindow; colorSet: ColorContext.Window }
++        ColorContext { id: fbField; colorSet: ColorContext.Slider }
++        ColorContext { id: fbView; colorSet: ColorContext.View }
++
++        property alias text: input.text
++        property alias validator: input.validator
++        property alias echoMode: input.echoMode
++        property string unit
++
++        signal committed(string text)
++
++        implicitHeight: VLCStyle.dp(36, VLCStyle.scale)
++        radius: VLCStyle.dp(4, VLCStyle.scale)
++        color: fbField.bg.primary
++        border.width: input.activeFocus ? VLCStyle.border : 0
++        border.color: fbWindow.accent
++
++        TextInput {
++            id: input
++
++            anchors.fill: parent
++            anchors.leftMargin: VLCStyle.dp(12, VLCStyle.scale)
++            anchors.rightMargin: VLCStyle.dp(12, VLCStyle.scale) + (unitLabel.visible ? unitLabel.width + VLCStyle.dp(6, VLCStyle.scale) : 0)
++
++            verticalAlignment: TextInput.AlignVCenter
++            clip: true
++            selectByMouse: true
++
++            color: fbView.fg.primary
++            selectionColor: fbField.bg.secondary
++            font.pixelSize: VLCStyle.fontSize_large
++
++            onEditingFinished: fieldBox.committed(text)
++        }
++
++        T.Label {
++            id: unitLabel
++
++            anchors.right: parent.right
++            anchors.rightMargin: VLCStyle.dp(12, VLCStyle.scale)
++            anchors.verticalCenter: parent.verticalCenter
++
++            visible: fieldBox.unit.length > 0
++            text: fieldBox.unit
++            color: fbWindow.fg.secondary
++            font.pixelSize: VLCStyle.fontSize_large
++        }
++    }
++
++    // Flat rectangular button (#373737, orange text for destructive actions)
++    component FlatButton: T.AbstractButton {
++        id: flatButton
++
++        property bool accent: false
++
++        ColorContext { id: btWindow; colorSet: ColorContext.Window }
++        ColorContext { id: btField; colorSet: ColorContext.Slider }
++        ColorContext { id: btView; colorSet: ColorContext.View }
++
++        implicitWidth: Math.max(VLCStyle.dp(96, VLCStyle.scale), buttonLabel.implicitWidth + VLCStyle.dp(32, VLCStyle.scale))
++        implicitHeight: VLCStyle.dp(36, VLCStyle.scale)
++
++        background: Rectangle {
++            radius: VLCStyle.dp(4, VLCStyle.scale)
++            color: flatButton.accent ? btField.bg.secondary : btView.border
++            opacity: flatButton.hovered ? 0.8 : 1.0
++        }
++
++        contentItem: T.Label {
++            id: buttonLabel
++
++            horizontalAlignment: Text.AlignHCenter
++            verticalAlignment: Text.AlignVCenter
++            text: flatButton.text
++            color: flatButton.accent ? btWindow.accent : btView.fg.primary
++            font.pixelSize: VLCStyle.fontSize_large
++            font.weight: Font.DemiBold
++        }
++    }
++}
+diff --git a/modules/gui/qt/dialogs/dialogs/qml/SettingsWindow.qml b/modules/gui/qt/dialogs/dialogs/qml/SettingsWindow.qml
+new file mode 100644
+index 0000000..213e7cf
+--- /dev/null
++++ b/modules/gui/qt/dialogs/dialogs/qml/SettingsWindow.qml
+@@ -0,0 +1,467 @@
++/*****************************************************************************
++ * Copyright (C) 2026 VLC authors and VideoLAN
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * ( at your option ) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
++ *****************************************************************************/
++import QtQuick
++import QtQuick.Layouts
++import QtQuick.Templates as T
++
++import VLC.MainInterface
++import VLC.Style
++import VLC.Widgets as Widgets
++import VLC.Dialogs
++
++// Juxtopposed: the redesigned settings window. Categories on the left
++// (App / Media / System), the selected page on the right with its basic
++// settings first and its advanced options below, and a search over all of them.
++FocusScope {
++    id: root
++
++    signal closed()
++
++    property int currentIndex: 0
++    property bool advancedShown: false
++
++    readonly property var categories: pages.categories
++    readonly property var page: categories[currentIndex]
++    readonly property bool searching: searchInput.text.trim().length > 0
++
++    // Categories with their group headings, as one flat list
++    readonly property var _navItems: {
++        const items = []
++        let group = ""
++        categories.forEach((category, index) => {
++            if (category.group !== group) {
++                group = category.group
++                items.push({ header: group })
++            }
++            items.push({ index: index, name: category.name, icon: category.icon })
++        })
++        return items
++    }
++
++    focus: true
++
++    onCurrentIndexChanged: {
++        advancedShown = false
++        content.contentY = 0
++    }
++
++    Keys.onEscapePressed: root.closed()
++
++    Component.onCompleted: searchInput.forceActiveFocus()
++
++    SettingsPages { id: pages }
++
++    readonly property ColorContext colorContext: ColorContext {
++        id: theme
++        colorSet: ColorContext.Window
++    }
++
++    ColorContext { id: viewTheme; colorSet: ColorContext.View }
++    ColorContext { id: fieldTheme; colorSet: ColorContext.Slider }
++    ColorContext { id: inputTheme; colorSet: ColorContext.TextField }
++    ColorContext { id: itemTheme; colorSet: ColorContext.Item }
++
++    // Rows of every page matching the search, by label or VLC's own wording
++    function _searchResults(query) {
++        const q = query.trim().toLowerCase()
++        const results = []
++        for (const category of categories) {
++            for (const section of category.sections) {
++                for (const row of section.rows) {
++                    let text = (row.label ?? "").toLowerCase()
++                    if (row.option) {
++                        const opt = VLCSettings.option(row.option)
++                        if (!opt.name)
++                            continue
++                        text += " " + (opt.text ?? "").toLowerCase() + " " + row.option
++                    }
++                    if (text.includes(q))
++                        results.push(row)
++                }
++            }
++        }
++        return results
++    }
++
++    // Dim the interface behind the window; clicking outside closes it
++    Rectangle {
++        anchors.fill: parent
++        color: Qt.rgba(0, 0, 0, 0.5)
++
++        TapHandler { onTapped: root.closed() }
++    }
++
++    Rectangle {
++        id: card
++
++        anchors.centerIn: parent
++        width: Math.min(VLCStyle.dp(1048, VLCStyle.scale), root.width - 2 * VLCStyle.margin_large)
++        height: Math.min(VLCStyle.dp(865, VLCStyle.scale), root.height - 2 * VLCStyle.margin_large)
++
++        radius: VLCStyle.dp(10, VLCStyle.scale)
++        color: theme.bg.primary
++
++        // Swallow clicks so they don't reach the backdrop
++        TapHandler {}
++
++        Widgets.DefaultShadow { }
++
++        // Left column: search and categories
++        ColumnLayout {
++            id: sideColumn
++
++            anchors.left: parent.left
++            anchors.top: parent.top
++            anchors.bottom: parent.bottom
++            anchors.margins: VLCStyle.dp(8, VLCStyle.scale)
++
++            width: VLCStyle.dp(194, VLCStyle.scale)
++            spacing: VLCStyle.dp(8, VLCStyle.scale)
++
++            Rectangle {
++                Layout.fillWidth: true
++                Layout.preferredHeight: VLCStyle.dp(36, VLCStyle.scale)
++
++                radius: VLCStyle.dp(6, VLCStyle.scale)
++                color: inputTheme.bg.primary
++                border.width: searchInput.activeFocus ? VLCStyle.border : 0
++                border.color: theme.accent
++
++                Widgets.IconLabel {
++                    id: searchIcon
++
++                    anchors.left: parent.left
++                    anchors.leftMargin: VLCStyle.dp(8, VLCStyle.scale)
++                    anchors.verticalCenter: parent.verticalCenter
++
++                    text: VLCIcons.search
++                    color: inputTheme.fg.secondary
++                    font.pixelSize: VLCStyle.icon_normal
++                }
++
++                TextInput {
++                    id: searchInput
++
++                    anchors.left: searchIcon.right
++                    anchors.leftMargin: VLCStyle.dp(8, VLCStyle.scale)
++                    anchors.right: parent.right
++                    anchors.rightMargin: VLCStyle.dp(8, VLCStyle.scale)
++                    anchors.top: parent.top
++                    anchors.bottom: parent.bottom
++
++                    verticalAlignment: TextInput.AlignVCenter
++                    clip: true
++                    selectByMouse: true
++
++                    color: viewTheme.fg.primary
++                    selectionColor: fieldTheme.bg.secondary
++                    font.pixelSize: VLCStyle.fontSize_large
++
++                    Keys.onEscapePressed: (event) => {
++                        if (text.length > 0) {
++                            text = ""
++                            event.accepted = true
++                        } else {
++                            event.accepted = false
++                        }
++                    }
++
++                    T.Label {
++                        anchors.verticalCenter: parent.verticalCenter
++                        visible: !searchInput.length
++                        text: qsTr("Search")
++                        color: inputTheme.fg.secondary
++                        font.pixelSize: VLCStyle.fontSize_large
++                    }
++                }
++            }
++
++            Rectangle {
++                Layout.fillWidth: true
++                Layout.fillHeight: true
++
++                radius: VLCStyle.dp(6, VLCStyle.scale)
++                color: theme.bg.secondary
++
++                ListView {
++                    id: categoryList
++
++                    anchors.fill: parent
++                    anchors.margins: VLCStyle.dp(6, VLCStyle.scale)
++
++                    clip: true
++                    boundsBehavior: Flickable.StopAtBounds
++                    model: root._navItems
++                    spacing: VLCStyle.dp(4, VLCStyle.scale)
++
++                    delegate: T.ItemDelegate {
++                        id: categoryItem
++
++                        required property var modelData
++
++                        readonly property bool isHeader: modelData.header !== undefined
++                        readonly property bool current: !isHeader && !root.searching && root.currentIndex === modelData.index
++
++                        width: categoryList.width
++                        implicitHeight: isHeader ? VLCStyle.dp(32, VLCStyle.scale) : VLCStyle.dp(40, VLCStyle.scale)
++
++                        enabled: !isHeader
++                        hoverEnabled: !isHeader
++
++                        text: modelData.header ?? modelData.name
++
++                        onClicked: {
++                            searchInput.text = ""
++                            root.currentIndex = modelData.index
++                        }
++
++                        background: Rectangle {
++                            radius: VLCStyle.dp(4, VLCStyle.scale)
++                            color: (categoryItem.current || categoryItem.hovered) ? itemTheme.bg.highlight : "transparent"
++                            opacity: categoryItem.current ? 1.0 : 0.5
++                        }
++
++                        contentItem: Row {
++                            leftPadding: VLCStyle.dp(10, VLCStyle.scale)
++                            spacing: VLCStyle.dp(12, VLCStyle.scale)
++
++                            T.Label {
++                                anchors.verticalCenter: parent.verticalCenter
++                                visible: categoryItem.isHeader
++                                text: categoryItem.modelData.header ?? ""
++                                color: theme.fg.secondary
++                                font.pixelSize: VLCStyle.fontSize_large
++                            }
++
++                            Widgets.IconLabel {
++                                anchors.verticalCenter: parent.verticalCenter
++                                visible: !categoryItem.isHeader
++                                text: categoryItem.modelData.icon ?? ""
++                                color: categoryItem.current ? theme.accent : viewTheme.fg.primary
++                                font.pixelSize: VLCStyle.icon_normal
++                            }
++
++                            T.Label {
++                                anchors.verticalCenter: parent.verticalCenter
++                                visible: !categoryItem.isHeader
++                                text: categoryItem.modelData.name ?? ""
++                                color: categoryItem.current ? itemTheme.fg.highlight : viewTheme.fg.primary
++                                font.pixelSize: VLCStyle.fontSize_large
++                            }
++                        }
++                    }
++                }
++            }
++        }
++
++        // Right side: page header and content
++        Rectangle {
++            id: header
++
++            anchors.left: sideColumn.right
++            anchors.leftMargin: VLCStyle.dp(8, VLCStyle.scale)
++            anchors.right: parent.right
++            anchors.rightMargin: VLCStyle.dp(8, VLCStyle.scale)
++            anchors.top: parent.top
++            anchors.topMargin: VLCStyle.dp(8, VLCStyle.scale)
++
++            height: VLCStyle.dp(48, VLCStyle.scale)
++            radius: VLCStyle.dp(6, VLCStyle.scale)
++            color: fieldTheme.bg.primary
++
++            T.Label {
++                anchors.left: parent.left
++                anchors.leftMargin: VLCStyle.dp(24, VLCStyle.scale)
++                anchors.verticalCenter: parent.verticalCenter
++
++                text: root.searching ? qsTr("Search results") : root.page.title
++                color: itemTheme.fg.highlight
++                font.pixelSize: VLCStyle.fontSize_xlarge
++            }
++
++            Widgets.IconToolButton {
++                anchors.right: parent.right
++                anchors.rightMargin: VLCStyle.dp(8, VLCStyle.scale)
++                anchors.verticalCenter: parent.verticalCenter
++
++                text: VLCIcons.close
++                description: qsTr("Close")
++                font.pixelSize: VLCStyle.icon_normal
++
++                onClicked: root.closed()
++            }
++        }
++
++        Rectangle {
++            anchors.left: header.left
++            anchors.right: header.right
++            anchors.top: header.bottom
++            anchors.bottom: parent.bottom
++            anchors.bottomMargin: VLCStyle.dp(8, VLCStyle.scale)
++
++            radius: VLCStyle.dp(6, VLCStyle.scale)
++            color: viewTheme.bg.primary
++
++            Flickable {
++                id: content
++
++                anchors.fill: parent
++                anchors.margins: VLCStyle.dp(24, VLCStyle.scale)
++
++                clip: true
++                contentHeight: pageColumn.implicitHeight
++                boundsBehavior: Flickable.StopAtBounds
++
++                T.ScrollBar.vertical: Widgets.ScrollBarExt { }
++
++                ColumnLayout {
++                    id: pageColumn
++
++                    width: content.width - VLCStyle.dp(12, VLCStyle.scale)
++                    spacing: VLCStyle.dp(12, VLCStyle.scale)
++
++                    // Search results
++                    Repeater {
++                        model: root.searching ? root._searchResults(searchInput.text) : []
++
++                        SettingsRow {
++                            required property var modelData
++                            Layout.fillWidth: true
++                            row: modelData
++                        }
++                    }
++
++                    T.Label {
++                        visible: root.searching && root._searchResults(searchInput.text).length === 0
++                        text: qsTr("No settings match \"%1\"").arg(searchInput.text)
++                        color: theme.fg.secondary
++                        font.pixelSize: VLCStyle.fontSize_large
++                    }
++
++                    // Basic settings of the page, by section
++                    Repeater {
++                        model: root.searching ? [] : root.page.sections
++
++                        ColumnLayout {
++                            required property var modelData
++
++                            Layout.fillWidth: true
++                            Layout.bottomMargin: VLCStyle.dp(16, VLCStyle.scale)
++                            spacing: VLCStyle.dp(12, VLCStyle.scale)
++
++                            SectionTitle { text: modelData.title }
++
++                            Repeater {
++                                model: modelData.rows
++
++                                SettingsRow {
++                                    required property var modelData
++                                    Layout.fillWidth: true
++                                    row: modelData
++                                }
++                            }
++                        }
++                    }
++
++                    // Advanced Options: the page's extra actions, then every
++                    // core option of its VLC sections
++                    T.AbstractButton {
++                        id: advancedButton
++
++                        Layout.fillWidth: true
++                        implicitHeight: VLCStyle.dp(36, VLCStyle.scale)
++
++                        visible: !root.searching && ((root.page.advanced ?? []).length > 0 || (root.page.extras ?? []).length > 0)
++
++                        text: qsTr("Advanced Options")
++
++                        onClicked: root.advancedShown = !root.advancedShown
++
++                        background: Rectangle {
++                            radius: VLCStyle.dp(4, VLCStyle.scale)
++                            color: theme.bg.secondary
++                            opacity: advancedButton.hovered ? 0.8 : 1.0
++                        }
++
++                        contentItem: Item {
++                            Row {
++                                anchors.centerIn: parent
++                                spacing: VLCStyle.dp(12, VLCStyle.scale)
++
++                                T.Label {
++                                    anchors.verticalCenter: parent.verticalCenter
++                                    text: qsTr("Advanced Options")
++                                    color: viewTheme.fg.primary
++                                    font.pixelSize: VLCStyle.fontSize_large
++                                }
++
++                                Widgets.IconLabel {
++                                    anchors.verticalCenter: parent.verticalCenter
++                                    text: root.advancedShown ? VLCIcons.chevron_up : VLCIcons.chevron_down
++                                    color: viewTheme.fg.primary
++                                    font.pixelSize: VLCStyle.icon_normal
++                                }
++                            }
++                        }
++                    }
++
++                    Repeater {
++                        model: (!root.searching && root.advancedShown) ? (root.page.extras ?? []) : []
++
++                        SettingsRow {
++                            required property var modelData
++                            Layout.fillWidth: true
++                            row: modelData
++                        }
++                    }
++
++                    Repeater {
++                        model: (!root.searching && root.advancedShown) ? VLCSettings.coreOptions(root.page.advanced ?? []) : []
++
++                        Loader {
++                            required property var modelData
++
++                            Layout.fillWidth: true
++                            Layout.topMargin: modelData.section ? VLCStyle.dp(12, VLCStyle.scale) : 0
++
++                            sourceComponent: modelData.section ? advancedSection : advancedRow
++
++                            Component {
++                                id: advancedSection
++                                SectionTitle { text: modelData.section }
++                            }
++
++                            Component {
++                                id: advancedRow
++                                SettingsRow { row: ({ option: modelData.name }) }
++                            }
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++    component SectionTitle: T.Label {
++        ColorContext { id: titleTheme; colorSet: ColorContext.Item }
++
++        color: titleTheme.fg.highlight
++        font.pixelSize: VLCStyle.fontSize_xlarge
++        font.weight: Font.DemiBold
++    }
++}
+diff --git a/modules/gui/qt/dialogs/dialogs_provider.cpp b/modules/gui/qt/dialogs/dialogs_provider.cpp
+index 1cbecc9..07e1da4 100644
+--- a/modules/gui/qt/dialogs/dialogs_provider.cpp
++++ b/modules/gui/qt/dialogs/dialogs_provider.cpp
+@@ -67,6 +67,7 @@
+ #include <QUrl>
+ #include <QInputDialog>
+ #include <QPointer>
++#include <QMetaMethod>
+ #include <QMessageBox>
+ 
+ #define I_OP_DIR_WINTITLE I_DIR_OR_FOLDER( N_("Open Directory"), \
+@@ -288,6 +289,16 @@ const QEvent::Type DialogEvent::DialogEvent_Type =
+         (QEvent::Type)QEvent::registerEventType();
+ 
+ void DialogsProvider::prefsDialog()
++{
++    if (isSignalConnected(QMetaMethod::fromSignal(&DialogsProvider::settingsRequested)))
++    {
++        emit settingsRequested();
++        return;
++    }
++    classicPrefsDialog();
++}
++
++void DialogsProvider::classicPrefsDialog()
+ {
+     if (Q_LIKELY(!m_prefsDialog))
+     {
+diff --git a/modules/gui/qt/dialogs/dialogs_provider.hpp b/modules/gui/qt/dialogs/dialogs_provider.hpp
+index 950cac7..8071c96 100644
+--- a/modules/gui/qt/dialogs/dialogs_provider.hpp
++++ b/modules/gui/qt/dialogs/dialogs_provider.hpp
+@@ -216,6 +216,9 @@ public slots:
+                                               const QMessageBox::StandardButton defaultButton = QMessageBox::NoButton,
+                                               const QMessageBox::Icon icon = QMessageBox::NoIcon);
+     void prefsDialog();
++    // Juxtopposed: VLC's original preferences dialog; prefsDialog() opens
++    // the QML settings window when the interface provides one.
++    void classicPrefsDialog();
+     void firstRunDialog();
+     void extendedDialog();
+     void synchroDialog();
+@@ -304,6 +307,8 @@ signals:
+     void pluginDialogVisibleChanged();
+     void egpDialogVisibleChanged();
+     void prefsDialogVisibleChanged();
++    // Juxtopposed: asks the QML interface to toggle its settings window
++    void settingsRequested();
+ #ifdef UPDATE_CHECK
+     void updateDialogVisibleChanged();
+ #endif
+diff --git a/modules/gui/qt/dialogs/preferences/vlc_settings.cpp b/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
+new file mode 100644
+index 0000000..1a1df43
+--- /dev/null
++++ b/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
+@@ -0,0 +1,267 @@
++/*****************************************************************************
++ * vlc_settings.cpp : VLC configuration access for the QML settings window
++ *****************************************************************************
++ * Copyright (C) 2026 VLC authors and VideoLAN
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * ( at your option ) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
++ *****************************************************************************/
++
++#ifdef HAVE_CONFIG_H
++# include "config.h"
++#endif
++
++#include "dialogs/preferences/vlc_settings.hpp"
++
++#include <QDesktopServices>
++#include <QDir>
++#include <QFileDialog>
++#include <QUrl>
++
++#include <vlc_configuration.h>
++#include <vlc_modules.h>
++#include <vlc_plugin.h>
++
++namespace {
++
++QString typeName(int type)
++{
++    switch (type)
++    {
++    case CONFIG_ITEM_BOOL:        return QStringLiteral("bool");
++    case CONFIG_ITEM_INTEGER:     return QStringLiteral("int");
++    case CONFIG_ITEM_RGB:         return QStringLiteral("color");
++    case CONFIG_ITEM_FLOAT:       return QStringLiteral("float");
++    case CONFIG_ITEM_PASSWORD:    return QStringLiteral("password");
++    case CONFIG_ITEM_KEY:         return QStringLiteral("key");
++    case CONFIG_ITEM_LOADFILE:
++    case CONFIG_ITEM_SAVEFILE:    return QStringLiteral("file");
++    case CONFIG_ITEM_DIRECTORY:   return QStringLiteral("directory");
++    case CONFIG_ITEM_FONT:        return QStringLiteral("font");
++    case CONFIG_ITEM_MODULE:
++    case CONFIG_ITEM_MODULE_CAT:
++    case CONFIG_ITEM_MODULE_LIST:
++    case CONFIG_ITEM_MODULE_LIST_CAT: return QStringLiteral("module");
++    default:                      return QStringLiteral("string");
++    }
++}
++
++bool isStringType(int type)
++{
++    return IsConfigStringType(type);
++}
++
++} // namespace
++
++VLCSettings::VLCSettings(qt_intf_t *intf, QObject *parent)
++    : QObject(parent)
++    , m_intf(intf)
++{
++    // Batch quick successive changes (sliders) into one write of the file
++    m_saveTimer.setSingleShot(true);
++    m_saveTimer.setInterval(500);
++    connect(&m_saveTimer, &QTimer::timeout, this, &VLCSettings::save);
++}
++
++QVariantMap VLCSettings::option(const QString &name) const
++{
++    QVariantMap result;
++    const QByteArray utf8 = name.toUtf8();
++    const module_config_t *item = config_FindConfig(utf8.constData());
++    // Obsolete options are kept without any text: treat them as missing
++    if (!item || !CONFIG_ITEM(item->i_type) || !item->psz_text)
++        return result;
++
++    result[QStringLiteral("name")] = name;
++    result[QStringLiteral("type")] = typeName(item->i_type);
++    result[QStringLiteral("text")] = item->psz_text ? qfut(item->psz_text) : name;
++    result[QStringLiteral("longText")] = item->psz_longtext ? qfut(item->psz_longtext) : QString();
++
++    QVariantList choices;
++
++    if (isStringType(item->i_type))
++    {
++        char *value = config_GetPsz(utf8.constData());
++        result[QStringLiteral("value")] = qfu(value ? value : "");
++        free(value);
++        result[QStringLiteral("defaultValue")] = qfu(item->orig.psz ? item->orig.psz : "");
++
++        char **values, **texts;
++        ssize_t count = config_GetPszChoices(utf8.constData(), &values, &texts);
++        for (ssize_t i = 0; i < count; i++)
++        {
++            choices.append(QVariantMap{
++                { QStringLiteral("value"), qfu(values[i]) },
++                { QStringLiteral("text"), qfut(texts[i]) } });
++            free(values[i]);
++            free(texts[i]);
++        }
++        if (count >= 0)
++        {
++            free(values);
++            free(texts);
++        }
++    }
++    else if (item->i_type == CONFIG_ITEM_FLOAT)
++    {
++        result[QStringLiteral("value")] = config_GetFloat(utf8.constData());
++        result[QStringLiteral("defaultValue")] = item->orig.f;
++        result[QStringLiteral("min")] = item->min.f;
++        result[QStringLiteral("max")] = item->max.f;
++    }
++    else // bool, int, rgb
++    {
++        const qlonglong value = config_GetInt(utf8.constData());
++        if (item->i_type == CONFIG_ITEM_BOOL)
++        {
++            result[QStringLiteral("value")] = value != 0;
++            result[QStringLiteral("defaultValue")] = item->orig.i != 0;
++        }
++        else
++        {
++            result[QStringLiteral("value")] = value;
++            result[QStringLiteral("defaultValue")] = qlonglong(item->orig.i);
++            result[QStringLiteral("min")] = qlonglong(item->min.i);
++            result[QStringLiteral("max")] = qlonglong(item->max.i);
++
++            int64_t *values;
++            char **texts;
++            ssize_t count = config_GetIntChoices(utf8.constData(), &values, &texts);
++            for (ssize_t i = 0; i < count; i++)
++            {
++                choices.append(QVariantMap{
++                    { QStringLiteral("value"), qlonglong(values[i]) },
++                    { QStringLiteral("text"), qfut(texts[i]) } });
++                free(texts[i]);
++            }
++            if (count >= 0)
++            {
++                free(values);
++                free(texts);
++            }
++        }
++    }
++
++    result[QStringLiteral("choices")] = choices;
++    return result;
++}
++
++bool VLCSettings::setValue(const QString &name, const QVariant &value)
++{
++    const QByteArray utf8 = name.toUtf8();
++    const module_config_t *item = config_FindConfig(utf8.constData());
++    if (!item || !CONFIG_ITEM(item->i_type))
++        return false;
++
++    if (isStringType(item->i_type))
++        config_PutPsz(utf8.constData(), value.toString().toUtf8().constData());
++    else if (item->i_type == CONFIG_ITEM_FLOAT)
++        config_PutFloat(utf8.constData(), value.toFloat());
++    else if (item->i_type == CONFIG_ITEM_BOOL)
++        config_PutInt(utf8.constData(), value.toBool() ? 1 : 0);
++    else
++        config_PutInt(utf8.constData(), value.toLongLong());
++
++    m_saveTimer.start();
++    return true;
++}
++
++QVariantList VLCSettings::coreOptions(const QVariantList &subcategories) const
++{
++    QVariantList result;
++
++    module_t *main = module_get_main();
++    if (!main)
++        return result;
++
++    unsigned count;
++    module_config_t *const config = module_config_get(main, &count);
++    if (!config)
++        return result;
++
++    for (const QVariant &wanted : subcategories)
++    {
++        const int subcat = wanted.toInt();
++        bool inside = false;
++        for (unsigned i = 0; i < count; i++)
++        {
++            const module_config_t *item = &config[i];
++            if (item->i_type == CONFIG_SUBCATEGORY)
++            {
++                inside = (item->value.i == subcat);
++                continue;
++            }
++            if (!inside)
++                continue;
++
++            if (item->i_type == CONFIG_SECTION)
++                result.append(QVariantMap{ { QStringLiteral("section"), qfut(item->psz_text) } });
++            else if (CONFIG_ITEM(item->i_type) && item->psz_name && item->psz_text
++                     && item->i_type != CONFIG_ITEM_KEY)
++                result.append(QVariantMap{ { QStringLiteral("name"), qfu(item->psz_name) } });
++        }
++    }
++
++    module_config_free(config);
++    return result;
++}
++
++QString VLCSettings::browse(const QString &name)
++{
++    const QByteArray utf8 = name.toUtf8();
++    const module_config_t *item = config_FindConfig(utf8.constData());
++    if (!item || !IsConfigStringType(item->i_type))
++        return {};
++
++    char *current = config_GetPsz(utf8.constData());
++    const QString start = qfu(current ? current : "");
++    free(current);
++
++    const QString title = item->psz_text ? qfut(item->psz_text) : name;
++    QString path;
++    if (item->i_type == CONFIG_ITEM_DIRECTORY)
++        path = QFileDialog::getExistingDirectory(nullptr, title, start);
++    else if (item->i_type == CONFIG_ITEM_SAVEFILE)
++        path = QFileDialog::getSaveFileName(nullptr, title, start);
++    else
++        path = QFileDialog::getOpenFileName(nullptr, title, start);
++
++    if (path.isEmpty())
++        return {};
++    path = QDir::toNativeSeparators(path);
++    setValue(name, path);
++    return path;
++}
++
++void VLCSettings::resetAll()
++{
++    config_ResetAll();
++    save();
++    emit reset();
++}
++
++void VLCSettings::openConfigFolder() const
++{
++    char *dir = config_GetUserDir(VLC_CONFIG_DIR);
++    if (!dir)
++        return;
++    QDesktopServices::openUrl(QUrl::fromLocalFile(qfu(dir)));
++    free(dir);
++}
++
++void VLCSettings::save()
++{
++    m_saveTimer.stop();
++    config_SaveConfigFile(m_intf);
++}
+diff --git a/modules/gui/qt/dialogs/preferences/vlc_settings.hpp b/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
+new file mode 100644
+index 0000000..79d09bb
+--- /dev/null
++++ b/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
+@@ -0,0 +1,70 @@
++/*****************************************************************************
++ * vlc_settings.hpp : VLC configuration access for the QML settings window
++ *****************************************************************************
++ * Copyright (C) 2026 VLC authors and VideoLAN
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * ( at your option ) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
++ *****************************************************************************/
++
++#ifndef VLC_QT_VLC_SETTINGS_HPP
++#define VLC_QT_VLC_SETTINGS_HPP
++
++#include <QObject>
++#include <QTimer>
++#include <QVariant>
++
++#include "qt.hpp"
++
++// Juxtopposed: lets the QML settings window read and write VLC options by
++// name, and list the core options of VLC's settings sections.
++class VLCSettings : public QObject
++{
++    Q_OBJECT
++
++public:
++    VLCSettings(qt_intf_t *intf, QObject *parent = nullptr);
++
++    // Describes an option: { name, type, value, defaultValue, text, longText,
++    // min, max, choices: [{ value, text }] }. Empty if the option does not exist.
++    // type is one of: bool, int, float, color, string, password, file, directory,
++    // font, module, key.
++    Q_INVOKABLE QVariantMap option(const QString &name) const;
++
++    // Writes an option and schedules saving the configuration file.
++    Q_INVOKABLE bool setValue(const QString &name, const QVariant &value);
++
++    // The core options of the given VLC subcategories (SUBCAT_*), in order,
++    // as [{ section: "..."}, or { name: "..." }].
++    Q_INVOKABLE QVariantList coreOptions(const QVariantList &subcategories) const;
++
++    // Asks for a file or folder for a path option, stores it and returns it
++    // (empty if cancelled).
++    Q_INVOKABLE QString browse(const QString &name);
++
++    Q_INVOKABLE void resetAll();
++    Q_INVOKABLE void openConfigFolder() const;
++
++signals:
++    // Emitted when every option may have changed (reset)
++    void reset();
++
++private:
++    void save();
++
++    qt_intf_t *m_intf;
++    QTimer m_saveTimer;
++};
++
++#endif
+diff --git a/modules/gui/qt/maininterface/mainui.cpp b/modules/gui/qt/maininterface/mainui.cpp
+index 304e751..84eebab 100644
+--- a/modules/gui/qt/maininterface/mainui.cpp
++++ b/modules/gui/qt/maininterface/mainui.cpp
+@@ -41,6 +41,7 @@
+ #include "util/imageluminanceextractor.hpp"
+ #include "util/keyhelper.hpp"
+ #include "style/systempalette.hpp"
++#include "dialogs/preferences/vlc_settings.hpp"
+ #include "style/vlcicons.hpp"
+ #include "util/navigation_history.hpp"
+ #include "util/flickable_scroll_handler.hpp"
+@@ -280,6 +281,8 @@ void MainUI::registerQMLTypes()
+         qmlRegisterSingletonInstance<DialogsProvider>(uri, versionMajor, versionMinor, "DialogsProvider", DialogsProvider::getInstance());
+         assert(DialogErrorModel::getInstance<false>());
+         qmlRegisterSingletonInstance<DialogErrorModel>(uri, versionMajor, versionMinor, "DialogErrorModel", DialogErrorModel::getInstance<false>());
++        // Juxtopposed settings window
++        qmlRegisterSingletonInstance<VLCSettings>(uri, versionMajor, versionMinor, "VLCSettings", new VLCSettings(m_intf, this));
+ 
+         qmlRegisterModule(uri, versionMajor, versionMinor);
+         qmlProtectModule(uri, versionMajor);
+diff --git a/modules/gui/qt/maininterface/qml/MainInterface.qml b/modules/gui/qt/maininterface/qml/MainInterface.qml
+index fed85fb..1b5101e 100644
+--- a/modules/gui/qt/maininterface/qml/MainInterface.qml
++++ b/modules/gui/qt/maininterface/qml/MainInterface.qml
+@@ -335,6 +335,35 @@ Item {
+             source: "qrc:///qt/qml/VLC/Menus/GlobalShortcuts.qml"
+         }
+ 
++        // Juxtopposed: the settings window, over whichever view is shown.
++        // DialogsProvider.prefsDialog() (menus, side bar, Ctrl+P) toggles it.
++        Loader {
++            id: settingsLoader
++
++            anchors.fill: parent
++            z: 10
++
++            active: false
++            focus: active
++            source: "qrc:///qt/qml/VLC/Dialogs/SettingsWindow.qml"
++
++            Connections {
++                target: DialogsProvider
++                function onSettingsRequested() {
++                    settingsLoader.active = !settingsLoader.active
++                }
++            }
++
++            Connections {
++                target: settingsLoader.item
++                ignoreUnknownSignals: true
++                function onClosed() {
++                    settingsLoader.active = false
++                    viewLoader.forceActiveFocus()
++                }
++            }
++        }
++
+         Loader {
+             active: {
+                 const windowVisibility = MainCtx.intfMainWindow.visibility
+diff --git a/modules/gui/qt/meson.build b/modules/gui/qt/meson.build
+index 89a2952..4b82fe1 100644
+--- a/modules/gui/qt/meson.build
++++ b/modules/gui/qt/meson.build
+@@ -61,6 +61,7 @@ moc_headers = files(
+     'dialogs/preferences/expert_model.hpp',
+     'dialogs/preferences/expert_view.hpp',
+     'dialogs/preferences/preferences.hpp',
++    'dialogs/preferences/vlc_settings.hpp',
+     'dialogs/preferences/preferences_widgets.hpp',
+     'dialogs/preferences/simple_preferences.hpp',
+     'dialogs/sout/convert.hpp',
+@@ -265,6 +266,8 @@ qt_plugin_sources = files(
+     'dialogs/preferences/expert_view.hpp',
+     'dialogs/preferences/preferences.cpp',
+     'dialogs/preferences/preferences.hpp',
++    'dialogs/preferences/vlc_settings.cpp',
++    'dialogs/preferences/vlc_settings.hpp',
+     'dialogs/preferences/preferences_widgets.cpp',
+     'dialogs/preferences/preferences_widgets.hpp',
+     'dialogs/preferences/simple_preferences.cpp',
+@@ -612,6 +615,9 @@ qml_modules += {
+         'dialogs/dialogs/qml/CustomDialog.qml',
+         'dialogs/dialogs/qml/Dialogs.qml',
+         'dialogs/dialogs/qml/ModalDialog.qml',
++        'dialogs/dialogs/qml/SettingsPages.qml',
++        'dialogs/dialogs/qml/SettingsRow.qml',
++        'dialogs/dialogs/qml/SettingsWindow.qml',
+         'dialogs/dialogs/qml/WindowDialog.qml',
+         'dialogs/toolbar/qml/EditorDNDDelegate.qml',
+         'dialogs/toolbar/qml/EditorDNDView.qml',
+diff --git a/modules/gui/qt/pixmaps/VLCIcons.json b/modules/gui/qt/pixmaps/VLCIcons.json
+index 1618f05..8fa0f30 100644
+--- a/modules/gui/qt/pixmaps/VLCIcons.json
++++ b/modules/gui/qt/pixmaps/VLCIcons.json
+@@ -104,6 +104,11 @@
+         {"key":"folder", "path": "./icons/juxt/folder.svg"},
+         {"key":"lists", "path": "./icons/juxt/lists.svg"},
+         {"key":"artist", "path": "./icons/juxt/artist.svg"},
+-        {"key":"popout", "path": "./icons/juxt/popout.svg"}
++        {"key":"popout", "path": "./icons/juxt/popout.svg"},
++        {"key":"preferences", "path": "./icons/juxt/preferences.svg"},
++        {"key":"interface_cursor", "path": "./icons/juxt/interface_cursor.svg"},
++        {"key":"privacy", "path": "./icons/juxt/privacy.svg"},
++        {"key":"keyboard", "path": "./icons/juxt/keyboard.svg"},
++        {"key":"plugins", "path": "./icons/juxt/plugins.svg"}
+     ]
+ }
+diff --git a/modules/gui/qt/pixmaps/VLCIcons.ttf b/modules/gui/qt/pixmaps/VLCIcons.ttf
+index c538b206b0c7e9f98f4c56119bce21fc658d24b2..dd72f8db481e2ce512e785edfed6b3cbce9afaa8 100644
+GIT binary patch
+delta 1665
+zcma)6OKcle6uo!Gaq5}Yj%QM*w&Srg{<ZbwH*u__CUGJls_Lc<q_IjUZLIv9=8GCf
+z0V#5pRmuWzE3u5KB9J3NLQ({RB7s;`fQ0z8DpD7yS+FWpND-UV;l9a7fmLVby?4*O
+z=iZt3&YQRRJ}!TZIY0og!94IV)zNXTbLH0AUjS0q$y<50yH<bl6Q2UWS;Bq&<LRkC
+z4?ms+;MS;>_s>lGK;^CinC?>CG@QONwY5c+AoUjE1H)r)3_Y@Dvj8Qx08TAt2Gaxe
+zRV$3UNiCMi4Cc}Yc$0}<5G6+-Gd?}5&xO7v{DAPovC01Q*Ya{N)&7C-{qgkd6nw$A
+zQ~W$(-$Z(R@JT3f383o*`XFIy^2+oF8*hFC@NyUBG|$i*OFojQerlQ3pP~BAxw<oi
+ze`WOnRT^joK3iLqF4>;j0Fk(K{Q;l8y)(X(_hAcO&R@jWFq8ih|7z@md02qs)PT*^
+zXqCn~0$K^N6|Dpl{7s{YZo<E3@(;M*EQ2rv!;pcI)n&dE^Pii3Jm??ue-f|;3PJkd
+z)vG0sU(A`I4;J`Eeg;JFLN&BQC%gh6>5jwpa<dw0v`0%%phK_M9pz^KaSW;TYA71R
+zx(35h=VvH*g5QbrMwHu^9oT2zbxV?4ZWR4V{g5ml5(B4l%)q9CRg$c%!zOZW2e(Q0
+zT(azvvBfRRZi&xI)~6}P<qFpKkOin-u|Nhzm#8sU&pr}S_Y&CJ&BHuTH|;?$L`aN0
+zmU`<=dIi$#)G&sk2plvflZ{2AcL#%R4p?72>9$~xAiFKaB_V$y;Lc@*;*!NJ3)o|E
+z)7o>S&<H=nuYm{Rgmo`Eyr`fD%gr`4tF>4|%0^=eq{pF>%Z64KC6+@^U@MD;YLOoN
+z`9e5;tomq8b9Pj2y51y@W}9n{Rv(MM-c%8<iH0lHkv=&W9tg{QBWh*1p*GI1IfG8S
+z&EBnhu5I>~)z+5vZeH`~-Q;ox!?vJDwh6l8nOpBF^ZClU*5^EmF4$yGkUmtT%~jy<
+z(~l>D3~un#!Zgqno`)p73Zt}0Rfg16OleY<?TV;Fk8K;VJ;$@*cT0T<oJU~#Z?S&f
+z5SS_GlJ6KQlcc2N9b>PMLGY`6oTnT4i<XL9cAJF}BXiv7^Uq-8$$^eyp<`g615+IX
+zZLM0dptZJYn9^FeHN4G#&nM|8$OFi6)E!JAJ;s!a)8su|Idhih%n?)xm?NATV#29r
+zCbWS#qM{y)hKLesAymPbM%qpmRbmB=;>`Yk29;sejLH$bH>r9xSIDI){t2%p2DC&%
+z%LPQuJK<LhzgL}9G))OgM~+BAW(h(tl1M~?f-tFyZM|)Re}d=%$?22=RAIs|kW*Co
+zq~^8DE|+ZgYMOV{CnU}%1m7qF3Ue#lZbfqjoSMP{ZQ>5g?;90GrMj)HS`o>&M-fH4
+z*50n!McP=a)5$^Pb!f;xJYB=-4f%teH|S`)+4-G-LpY2X9Kp-0V`m)vId*tYW$Nqd
+tc8&U7L*F$Tb`5rR(}i^Qb8KW_{pO<;HvZ=%{qUuKEDQ9<pN0b5{ujn`L0td<
+
+delta 431
+zcmdn6o^ioa#(D-u1_lOxh6V;^h5|RY5Z{fn-1!+80(*d>GXBB(MjtLR2Qn})Rsi`4
+z$+?LIFR#9z%)r3328g+m%Ssd&l$bgg7+7`y<yq1biwpk$2b#nX*aGBpq~}zot?Zaw
+z%D})1RO9+4BQ-I_P<$l|Q0@;9n`LCA)+cf>vj7DcO@IO_8M!4DhL=?XfczUk{-vD!
+z<irrq^nXCJ_W=24auX{G7`8Dx0_7use1*Kk+|&=McG(OJ-X$Oh733F}NL(>H$H3s*
+z0Mx@&2DFiNoe<Fcz!gCCDrG?PEkgAU1Nmow{7VdsN<a!20=l1%HOBMXd}ZJUIgWwh
+z+3!tyP+EVo0;4Ts>f|`aSjObZdl=vAf+T=`1Y;R+_%SfD0C}L0lwn|DcmbqYfDp)k
+zkUaST)6LC?nb{a8A7{C^c?s)V*Uhd0DU8g943?AE1nMyvT28(bI2CAqQP8Q)Zoy*A
+Rle@yCcu?%$5cZvs0RW;-apV91
+
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/interface_cursor.svg b/modules/gui/qt/pixmaps/icons/juxt/interface_cursor.svg
+new file mode 100644
+index 0000000..e3e26f9
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/interface_cursor.svg
+@@ -0,0 +1,34 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=ui, direction=default, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame 1">
++          <path
++             style="fill:#000000"
++             d="M 6,3 C 4.3520294,3 3,4.3520294 3,6 v 12 c 0,1.647944 1.3520133,3 3,3 h 12 c 1.64796,0 3,-1.35204 3,-3 V 6 C 21,4.3520133 19.647944,3 18,3 Z m 0,1.5 h 12 c 0.837256,0 1.5,0.6627067 1.5,1.5 v 12 c 0,0.83724 -0.66276,1.5 -1.5,1.5 H 6 C 5.1627067,19.5 4.5,18.837256 4.5,18 V 6 C 4.5,5.1626906 5.1626906,4.5 6,4.5 Z"
++             id="Rectangle 2" />
++          <path
++             style="fill:#000000;stroke-linecap:round"
++             d="m 8,7.25 a 0.75,0.75 0 0 0 -0.53125,0.21875 0.75,0.75 0 0 0 0,1.0625 l 8,8 a 0.75,0.75 0 0 0 1.0625,0 0.75,0.75 0 0 0 0,-1.0625 l -8,-8 A 0.75,0.75 0 0 0 8,7.25 Z"
++             id="Vector 115" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/keyboard.svg b/modules/gui/qt/pixmaps/icons/juxt/keyboard.svg
+new file mode 100644
+index 0000000..ee42a32
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/keyboard.svg
+@@ -0,0 +1,66 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=hotkeys, direction=default, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame">
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 9,15.25 A 0.75,0.75 0 0 0 8.25,16 0.75,0.75 0 0 0 9,16.75 h 6 A 0.75,0.75 0 0 0 15.75,16 0.75,0.75 0 0 0 15,15.25 Z"
++             id="Vector 9" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 6,8.25 A 0.75,0.75 0 0 0 5.25,9 0.75,0.75 0 0 0 6,9.75 0.75,0.75 0 0 0 6.75,9 0.75,0.75 0 0 0 6,8.25 Z"
++             id="Vector 10" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 6,11.25 A 0.75,0.75 0 0 0 5.25,12 0.75,0.75 0 0 0 6,12.75 0.75,0.75 0 0 0 6.75,12 0.75,0.75 0 0 0 6,11.25 Z"
++             id="Vector 14" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 10,8.25 A 0.75,0.75 0 0 0 9.25,9 0.75,0.75 0 0 0 10,9.75 0.75,0.75 0 0 0 10.75,9 0.75,0.75 0 0 0 10,8.25 Z"
++             id="Vector 11" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 10,11.25 A 0.75,0.75 0 0 0 9.25,12 0.75,0.75 0 0 0 10,12.75 0.75,0.75 0 0 0 10.75,12 0.75,0.75 0 0 0 10,11.25 Z"
++             id="Vector 15" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 14,8.25 A 0.75,0.75 0 0 0 13.25,9 0.75,0.75 0 0 0 14,9.75 0.75,0.75 0 0 0 14.75,9 0.75,0.75 0 0 0 14,8.25 Z"
++             id="Vector 12" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 14,11.25 A 0.75,0.75 0 0 0 13.25,12 0.75,0.75 0 0 0 14,12.75 0.75,0.75 0 0 0 14.75,12 0.75,0.75 0 0 0 14,11.25 Z"
++             id="Vector 16" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 18,8.25 A 0.75,0.75 0 0 0 17.25,9 0.75,0.75 0 0 0 18,9.75 0.75,0.75 0 0 0 18.75,9 0.75,0.75 0 0 0 18,8.25 Z"
++             id="Vector 13" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 18,11.25 A 0.75,0.75 0 0 0 17.25,12 0.75,0.75 0 0 0 18,12.75 0.75,0.75 0 0 0 18.75,12 0.75,0.75 0 0 0 18,11.25 Z"
++             id="Vector 17" />
++          <path
++             style="fill:#000000;stroke-linejoin:round"
++             d="M 5,4 C 2.7969729,4 1,5.7969729 1,8 v 8 c 0,2.203027 1.7969729,4 4,4 h 14 c 2.203027,0 4,-1.796973 4,-4 V 8 C 23,5.7969729 21.203027,4 19,4 Z m 0,1.5 h 14 c 1.397973,0 2.5,1.1020271 2.5,2.5 v 8 c 0,1.397973 -1.102027,2.5 -2.5,2.5 H 5 C 3.6020271,18.5 2.5,17.397973 2.5,16 V 8 C 2.5,6.6020271 3.6020271,5.5 5,5.5 Z"
++             id="Rectangle 1" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/plugins.svg b/modules/gui/qt/pixmaps/icons/juxt/plugins.svg
+new file mode 100644
+index 0000000..aaa41da
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/plugins.svg
+@@ -0,0 +1,30 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=plugins, direction=default, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame 1">
++          <path
++             style="fill:#000000"
++             d="M 5,4.25 C 4.0423821,4.25 3.25,5.0423821 3.25,6 V 8.5 9.25 C 3.25,10.207618 4.0423821,11 5,11 h 0.8496094 c 0.5611715,0 1,0.438829 1,1 0,0.561171 -0.4388285,1 -1,1 H 5 C 4.0424002,13 3.25,13.792377 3.25,14.75 V 15.5 18 c 0,0.957623 0.7924002,1.75 1.75,1.75 h 2.5996094 0.8007812 c 0.9576025,0 1.7500004,-0.792386 1.7500004,-1.75 v -0.699219 c 0,-0.588758 0.460069,-1.050781 1.048828,-1.050781 0.588758,0 1.050781,0.462023 1.050781,1.050781 V 18 c 0,0.957605 0.792395,1.75 1.75,1.75 h 0.800781 2.59961 c 0.957605,0 1.75,-0.792395 1.75,-1.75 v -2.5 -0.75 c 0,-0.146995 0.103005,-0.25 0.25,-0.25 H 20.25 c 1.371829,0 2.5,-1.128171 2.5,-2.5 0,-1.371829 -1.128171,-2.5 -2.5,-2.5 h -0.849609 c -0.146977,0 -0.25,-0.1030398 -0.25,-0.25 V 8.5 6 c 0,-0.9575998 -0.792377,-1.75 -1.75,-1.75 H 14.800781 14 c -0.957623,0 -1.75,0.7924002 -1.75,1.75 v 0.390625 c 0,0.5887726 -0.462018,1.0507812 -1.050781,1.0507812 -0.588764,0 -1.048828,-0.4620086 -1.048828,-1.0507812 V 6 c 0,-0.9576179 -0.7923825,-1.75 -1.7500004,-1.75 H 7.5996094 Z m 0,1.5 h 2.5996094 0.8007812 c 0.1469422,0 0.25,0.1030579 0.25,0.25 v 0.390625 c 0,1.3994474 1.1493917,2.5507812 2.5488284,2.5507813 C 12.598655,8.9414062 13.75,7.7900724 13.75,6.390625 V 6 c 0,-0.1469602 0.103023,-0.25 0.25,-0.25 h 0.800781 2.59961 c 0.146976,0 0.25,0.1030398 0.25,0.25 v 2.5 0.75 c 0,0.9576 0.792376,1.75 1.75,1.75 H 20.25 c 0.561171,0 1,0.438829 1,1 0,0.561171 -0.438829,1 -1,1 h -0.849609 c -0.957605,0 -1.75,0.792395 -1.75,1.75 V 15.5 18 c 0,0.146995 -0.103005,0.25 -0.25,0.25 H 14.800781 14 c -0.146995,0 -0.25,-0.103005 -0.25,-0.25 V 17.300781 C 13.75,15.90134 12.59866,14.75 11.199219,14.75 c -1.3994418,0 -2.5488284,1.15134 -2.5488284,2.550781 V 18 c 0,0.146986 -0.1030224,0.25 -0.25,0.25 H 7.5996094 5 C 4.8530398,18.25 4.75,18.146977 4.75,18 V 15.5 14.75 C 4.75,14.603023 4.8530398,14.5 5,14.5 h 0.8496094 c 1.3718285,0 2.5,-1.128171 2.5,-2.5 0,-1.371829 -1.1281715,-2.5 -2.5,-2.5 H 5 C 4.8530579,9.5 4.75,9.3969421 4.75,9.25 V 8.5 6 C 4.75,5.8530579 4.8530579,5.75 5,5.75 Z"
++             id="Rectangle 262" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/preferences.svg b/modules/gui/qt/pixmaps/icons/juxt/preferences.svg
+new file mode 100644
+index 0000000..54bd230
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/preferences.svg
+@@ -0,0 +1,50 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=preferences, direction=default, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame 1">
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 5,3.25 A 0.75,0.75 0 0 0 4.25,4 V 20 A 0.75,0.75 0 0 0 5,20.75 0.75,0.75 0 0 0 5.75,20 V 4 A 0.75,0.75 0 0 0 5,3.25 Z"
++             id="Vector 2" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 3.0019531,7.25 A 0.75,0.75 0 0 0 2.25,7.9980469 0.75,0.75 0 0 0 2.9980469,8.75 l 4,0.00977 A 0.75,0.75 0 0 0 7.75,8.0117188 0.75,0.75 0 0 0 7.0019531,7.2597656 Z"
++             id="Vector 5" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 10.001953,15.25 A 0.75,0.75 0 0 0 9.25,15.998047 0.75,0.75 0 0 0 9.9980469,16.75 l 4.0000001,0.0098 A 0.75,0.75 0 0 0 14.75,16.011719 0.75,0.75 0 0 0 14.001953,15.259766 Z"
++             id="Vector 6" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 17.001953,11.25 A 0.75,0.75 0 0 0 16.25,11.998047 0.75,0.75 0 0 0 16.998047,12.75 l 4,0.0098 A 0.75,0.75 0 0 0 21.75,12.011719 0.75,0.75 0 0 0 21.001953,11.259766 Z"
++             id="Vector 7" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 12,3.25 A 0.75,0.75 0 0 0 11.25,4 V 20 A 0.75,0.75 0 0 0 12,20.75 0.75,0.75 0 0 0 12.75,20 V 4 A 0.75,0.75 0 0 0 12,3.25 Z"
++             id="Vector 3" />
++          <path
++             style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++             d="M 19,3.25 A 0.75,0.75 0 0 0 18.25,4 V 20 A 0.75,0.75 0 0 0 19,20.75 0.75,0.75 0 0 0 19.75,20 V 4 A 0.75,0.75 0 0 0 19,3.25 Z"
++             id="Vector 4" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/privacy.svg b/modules/gui/qt/pixmaps/icons/juxt/privacy.svg
+new file mode 100644
+index 0000000..67a49da
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/privacy.svg
+@@ -0,0 +1,30 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg1"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs1" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g1">
++    <g
++       id="Icon">
++      <g
++         id="name=privacy, direction=default, state=default, value=default, EQ=default, two-tone=no">
++        <g
++           id="Frame 1">
++          <path
++             style="fill:#000000;stroke-linejoin:round"
++             d="m 12,1.7890625 c -0.6901,0 -1.380978,0.1887885 -1.988281,0.5683594 L 8.6230469,3.2265625 C 7.9870668,3.6240524 7.3115998,3.9573688 6.609375,4.2207031 L 5.6835937,4.5683594 C 4.2222814,5.1163624 3.25,6.5174385 3.25,8.078125 v 0.6757813 c 0,4.3540697 1.9253797,8.4868667 5.2578125,11.2890627 l 0.4355469,0.367187 c 1.7633706,1.482786 4.3499106,1.482786 6.1132816,0 l 0.435547,-0.367187 C 18.824587,17.240774 20.75,13.10798 20.75,8.7539063 V 8.078125 c 0,-1.5606785 -0.972288,-2.9617604 -2.433594,-3.5097656 L 17.390625,4.2207031 C 16.688366,3.9573771 16.012982,3.6240711 15.376953,3.2265625 L 13.988281,2.3574219 C 13.380978,1.977851 12.6901,1.7890625 12,1.7890625 Z m 0,1.4980469 c 0.4135,0 0.827863,0.1133577 1.193359,0.3417969 l 1.388672,0.8691406 C 15.302803,4.9485183 16.06734,5.326546 16.863281,5.625 l 0.927735,0.3476562 C 18.67151,6.302851 19.25,7.1377435 19.25,8.078125 v 0.6757813 c 0,3.9122067 -1.728456,7.6228197 -4.722656,10.1406247 l -0.435547,0.367188 c -1.21303,1.020014 -2.970564,1.020014 -4.1835939,0 L 9.4726563,18.894531 C 6.478429,16.376727 4.75,12.666116 4.75,8.7539063 V 8.078125 C 4.75,7.1377515 5.3304298,6.3028532 6.2109375,5.9726562 L 7.1367187,5.625 C 7.9325739,5.3265543 8.6971889,4.948537 9.4179688,4.4980469 L 10.806641,3.6289063 C 11.172137,3.4004671 11.5865,3.2871094 12,3.2871094 Z"
++             id="Vector 108" />
++        </g>
++      </g>
++    </g>
++  </g>
++</svg>
+diff --git a/modules/gui/qt/style/vlcicons.hpp b/modules/gui/qt/style/vlcicons.hpp
+index d254ebd..3a12c58 100644
+--- a/modules/gui/qt/style/vlcicons.hpp
++++ b/modules/gui/qt/style/vlcicons.hpp
+@@ -114,6 +114,11 @@ class VLCIcons : public QObject {
+     Q_PROPERTY(QChar lists MEMBER lists CONSTANT FINAL)
+     Q_PROPERTY(QChar artist MEMBER artist CONSTANT FINAL)
+     Q_PROPERTY(QChar popout MEMBER popout CONSTANT FINAL)
++    Q_PROPERTY(QChar preferences MEMBER preferences CONSTANT FINAL)
++    Q_PROPERTY(QChar interface_cursor MEMBER interface_cursor CONSTANT FINAL)
++    Q_PROPERTY(QChar privacy MEMBER privacy CONSTANT FINAL)
++    Q_PROPERTY(QChar keyboard MEMBER keyboard CONSTANT FINAL)
++    Q_PROPERTY(QChar plugins MEMBER plugins CONSTANT FINAL)
+ 
+ 
+ public:
+@@ -224,6 +229,11 @@ public:
+     static constexpr inline QChar lists{ u'\ue061' };
+     static constexpr inline QChar artist{ u'\ue062' };
+     static constexpr inline QChar popout{ u'\ue063' };
++    static constexpr inline QChar preferences{ u'\ue064' };
++    static constexpr inline QChar interface_cursor{ u'\ue065' };
++    static constexpr inline QChar privacy{ u'\ue066' };
++    static constexpr inline QChar keyboard{ u'\ue067' };
++    static constexpr inline QChar plugins{ u'\ue068' };
+ 
+ };
+ 
+diff --git a/modules/gui/qt/util/color_scheme_model.cpp b/modules/gui/qt/util/color_scheme_model.cpp
+index 1196d7b..ce44079 100644
+--- a/modules/gui/qt/util/color_scheme_model.cpp
++++ b/modules/gui/qt/util/color_scheme_model.cpp
+@@ -100,6 +100,18 @@ QVector<ColorSchemeModel::Item> ColorSchemeModel::getSchemes() const
+     return m_list;
+ }
+ 
++void ColorSchemeModel::setScheme(const ColorScheme scheme)
++{
++    for (int i = 0; i < m_list.size(); ++i)
++    {
++        if (m_list[i].scheme == scheme)
++        {
++            setCurrentIndex(i);
++            return;
++        }
++    }
++}
++
+ ColorSchemeModel::ColorScheme ColorSchemeModel::currentScheme() const
+ {
+     return m_list[m_currentIndex].scheme;
+diff --git a/modules/gui/qt/util/color_scheme_model.hpp b/modules/gui/qt/util/color_scheme_model.hpp
+index fc66170..e792dc6 100644
+--- a/modules/gui/qt/util/color_scheme_model.hpp
++++ b/modules/gui/qt/util/color_scheme_model.hpp
+@@ -60,6 +60,9 @@ public:
+ 
+     ColorScheme currentScheme() const;
+ 
++    // Juxtopposed: lets the QML settings window pick a scheme
++    Q_INVOKABLE void setScheme(ColorScheme scheme);
++
+ signals:
+     void currentChanged();
+ 
+-- 
+2.45.0.windows.1
+
