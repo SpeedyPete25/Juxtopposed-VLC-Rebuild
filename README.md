@@ -5,6 +5,10 @@ Video: https://www.youtube.com/watch?v=ERFeOgqk324
 Design File: https://www.figma.com/design/5UEUReDQz2dQjwoQDHY5z9/VLC-Redesign--Community-
 implemented in VLC 4's real Qt/QML interface, as patches on top of upstream VLC.
 
+The redesign itself is QML (Qt Quick) with some C++, in VLC's Qt interface
+(`modules/gui/qt`). It lives in `patches/`, which GitHub does not count as code,
+so the language bar only shows the helper scripts.
+
 ## Layout
 
 - `patches/` – the redesign, as `git format-patch` output against `VLC_BASE` (see `scripts/env.sh`)
@@ -21,6 +25,7 @@ implemented in VLC 4's real Qt/QML interface, as patches on top of upstream VLC.
 scripts/setup.sh            # once
 scripts/build.sh            # incremental after the first (~minutes) build; starts Docker Desktop if needed
 powershell -File scripts/run.ps1 -Media dist/media/test-clip.mp4 -Shot shot.png
+# extra VLC arguments: -Extra --no-audio,--start-time=30
 ```
 
 Requires Docker (the build runs in VideoLAN's image) and Windows to run the
@@ -32,14 +37,16 @@ After editing files in `vlc/`:
 scripts/save.sh "qt: describe the change"   # or --amend to fold into the last vlc/ commit
 ```
 
-It commits in `vlc/`, regenerates every file in `patches/` and stages them;
-then commit this repo as usual.
+It commits in `vlc/` and regenerates every file in `patches/`; then commit this
+repo as usual (the patches are left unstaged so everything goes into one
+commit). If you commit `vlc/` from VS Code instead, run `scripts/save.sh` with
+no arguments afterwards to export the patches.
 
 ## Status
 
 Done: dark theme tokens, Inter font, icon font, player title bar, single-row
 control bar (pill play button, inline seek bar, gradient volume), rounded
-video stage, library title bar / side bar / inset content panel, fullscreen
+video stage, library title bar, fullscreen
 window button, audio tracks button, music player view (rounded cover,
 "title - artist" caption, skip buttons in the control bar), floating mini
 player card in the library (video or cover, seek line, folder and artist),

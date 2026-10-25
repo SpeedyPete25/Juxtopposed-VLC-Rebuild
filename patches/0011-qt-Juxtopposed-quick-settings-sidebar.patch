@@ -1,0 +1,759 @@
+From 00f6aa6de372e6b26620da3dfb378b6a8924f143 Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Sat, 24 Oct 2026 21:52:44 +1030
+Subject: [PATCH] qt: Juxtopposed quick settings sidebar
+
+The gear button of the player's control bar now opens a quick settings sidebar on the right instead of the Adjustments and Effects window, so changes can be made while the video keeps playing next to it. It has Playback (speed with preset steps), Video (track, zoom, aspect ratio, crop, fit, deinterlacing, stereo mode), Audio (track, stereo mode, delay, equalizer preset) and Subtitles (track, delay, appearance) tabs, each ending with a link to the full settings or the effects window.
+
+SettingsRow gets an adjustable control width for the narrow sidebar, and its slider gets an explicit width and a track color visible on both backgrounds.
+---
+ modules/gui/qt/Makefile.am                    |   1 +
+ .../qt/dialogs/dialogs/qml/SettingsRow.qml    |   8 +-
+ modules/gui/qt/meson.build                    |   1 +
+ modules/gui/qt/player/qml/Player.qml          |  30 +-
+ .../gui/qt/player/qml/QuickSettingsPanel.qml  | 593 ++++++++++++++++++
+ .../ExtendedSettingsButton.qml                |  15 +-
+ 6 files changed, 643 insertions(+), 5 deletions(-)
+ create mode 100644 modules/gui/qt/player/qml/QuickSettingsPanel.qml
+
+diff --git a/modules/gui/qt/Makefile.am b/modules/gui/qt/Makefile.am
+index fc3fca4..c5d5f8c 100644
+--- a/modules/gui/qt/Makefile.am
++++ b/modules/gui/qt/Makefile.am
+@@ -1182,6 +1182,7 @@ libqml_module_player_a_QML = \
+ 	player/qml/LyricsFlickable.qml \
+ 	player/qml/MiniPlayer.qml \
+ 	player/qml/MiniPlayerCard.qml \
++	player/qml/QuickSettingsPanel.qml \
+ 	player/qml/SidePanelRail.qml \
+ 	player/qml/PIPPlayer.qml \
+ 	player/qml/Player.qml \
+diff --git a/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml b/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
+index be7d3a6..05a9566 100644
+--- a/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
++++ b/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
+@@ -39,7 +39,8 @@ Item {
+     readonly property var choices: row.choices ?? opt?.choices ?? []
+     readonly property string label: row.label ?? opt?.text ?? ""
+ 
+-    readonly property real controlWidth: VLCStyle.dp(320, VLCStyle.scale)
++    // Narrower in the player's quick settings sidebar
++    property real controlWidth: VLCStyle.dp(320, VLCStyle.scale)
+ 
+     // Rows for options missing from this VLC build are left out
+     visible: special || !!opt?.name
+@@ -320,6 +321,8 @@ Item {
+                 id: slider
+ 
+                 Layout.fillWidth: true
++                Layout.preferredWidth: root.controlWidth - VLCStyle.dp(60, VLCStyle.scale)
++                implicitWidth: root.controlWidth - VLCStyle.dp(60, VLCStyle.scale)
+                 implicitHeight: VLCStyle.dp(28, VLCStyle.scale)
+ 
+                 from: root.opt.min
+@@ -336,7 +339,8 @@ Item {
+                     width: slider.availableWidth
+                     height: VLCStyle.dp(8, VLCStyle.scale)
+                     radius: height / 2
+-                    color: theme.bg.secondary
++                    // visible on both the settings page and the player sidebar
++                    color: viewTheme.border
+ 
+                     Rectangle {
+                         width: slider.visualPosition * parent.width
+diff --git a/modules/gui/qt/meson.build b/modules/gui/qt/meson.build
+index 4b82fe1..52ff1f4 100644
+--- a/modules/gui/qt/meson.build
++++ b/modules/gui/qt/meson.build
+@@ -743,6 +743,7 @@ qml_modules += {
+        'player/qml/LyricsFlickable.qml',
+        'player/qml/MiniPlayer.qml',
+        'player/qml/MiniPlayerCard.qml',
++       'player/qml/QuickSettingsPanel.qml',
+        'player/qml/SidePanelRail.qml',
+        'player/qml/PIPPlayer.qml',
+        'player/qml/Player.qml',
+diff --git a/modules/gui/qt/player/qml/Player.qml b/modules/gui/qt/player/qml/Player.qml
+index d0683d2..2afa064 100644
+--- a/modules/gui/qt/player/qml/Player.qml
++++ b/modules/gui/qt/player/qml/Player.qml
+@@ -56,6 +56,9 @@ FocusScope {
+ 
+     // Private
+ 
++    // Juxtopposed: quick settings sidebar on the right, toggled by the gear button
++    property bool quickSettingsVisible: false
++
+     property bool _controlsUnderVideo: (MainCtx.pinVideoControls
+                                         &&
+                                         (MainCtx.intfMainWindow.visibility !== Window.FullScreen))
+@@ -184,7 +187,9 @@ FocusScope {
+             // Juxtopposed: the side panel pushes the video stage to the right
+             left: (MainCtx.hasEmbededVideo && rootPlayer._controlsUnderVideo && playlistpopup.visible) ? playlistpopup.right
+                                                                                                      : parent.left
+-            right: parent.right
++            // ... and the quick settings sidebar pushes it to the left
++            right: (MainCtx.hasEmbededVideo && rootPlayer._controlsUnderVideo && quickSettingsLoader.active) ? quickSettingsLoader.left
++                                                                                                             : parent.right
+             top: (MainCtx.hasEmbededVideo && rootPlayer._controlsUnderVideo) ? topBar.bottom : parent.top
+             bottom: (MainCtx.hasEmbededVideo && rootPlayer._controlsUnderVideo) ? controlBar.top : parent.bottom
+         }
+@@ -1053,6 +1058,29 @@ FocusScope {
+         }
+     }
+ 
++    Loader {
++        id: quickSettingsLoader
++
++        anchors {
++            top: (rootPlayer._controlsUnderVideo) ? topBar.bottom : parent.top
++            topMargin: (rootPlayer._controlsUnderVideo) ? 0 : topBar.reservedHeight
++            right: parent.right
++            bottom: (rootPlayer._controlsUnderVideo) ? controlBar.top : parent.bottom
++            bottomMargin: (rootPlayer._controlsUnderVideo) ? 0 : parent.height - rootPlayer.positionSliderY
++        }
++
++        width: VLCStyle.dp(400, VLCStyle.scale)
++        z: 1
++
++        active: rootPlayer.quickSettingsVisible
++
++        sourceComponent: QuickSettingsPanel {
++            onCloseRequested: rootPlayer.quickSettingsVisible = false
++        }
++
++        onActiveChanged: rootPlayer.lockUnlockAutoHide(active)
++    }
++
+     Loader {
+         id: playlistpopup
+ 
+diff --git a/modules/gui/qt/player/qml/QuickSettingsPanel.qml b/modules/gui/qt/player/qml/QuickSettingsPanel.qml
+new file mode 100644
+index 0000000..5e23d5d
+--- /dev/null
++++ b/modules/gui/qt/player/qml/QuickSettingsPanel.qml
+@@ -0,0 +1,593 @@
++/*****************************************************************************
++ * Copyright (C) 2026 VLC authors and VideoLAN
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * ( at your option ) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
++ *****************************************************************************/
++import QtQuick
++import QtQuick.Layouts
++import QtQuick.Templates as T
++
++import VLC.MainInterface
++import VLC.Style
++import VLC.Widgets as Widgets
++import VLC.Player
++import VLC.Dialogs
++
++// Juxtopposed: the player's quick settings sidebar (Playback, Video, Audio,
++// Subtitles), replacing the "Adjustments and Effects" window so changes can
++// be made while the video keeps playing next to it.
++Rectangle {
++    id: root
++
++    signal closeRequested()
++
++    property int currentTab: 3 // Subtitles first: the most used while watching
++
++    readonly property var tabs: [qsTr("Playback"), qsTr("Video"), qsTr("Audio"), qsTr("Subtitles")]
++
++    color: theme.bg.primary
++
++    readonly property ColorContext colorContext: ColorContext {
++        id: theme
++        colorSet: ColorContext.Window
++    }
++
++    ColorContext { id: viewTheme; colorSet: ColorContext.View }
++    ColorContext { id: fieldTheme; colorSet: ColorContext.Slider }
++    ColorContext { id: itemTheme; colorSet: ColorContext.Item }
++
++    // Tabs
++    Row {
++        id: tabRow
++
++        anchors.left: parent.left
++        anchors.right: parent.right
++        anchors.top: parent.top
++        anchors.margins: VLCStyle.dp(12, VLCStyle.scale)
++
++        spacing: VLCStyle.dp(4, VLCStyle.scale)
++
++        Repeater {
++            model: root.tabs
++
++            T.AbstractButton {
++                id: tab
++
++                required property string modelData
++                required property int index
++
++                readonly property bool active: root.currentTab === index
++
++                width: (tabRow.width - closeButton.width - 4 * tabRow.spacing) / 4
++                height: VLCStyle.dp(32, VLCStyle.scale)
++
++                text: modelData
++                onClicked: root.currentTab = index
++
++                background: Rectangle {
++                    radius: VLCStyle.dp(4, VLCStyle.scale)
++                    color: tab.active ? fieldTheme.bg.secondary : (tab.hovered ? theme.bg.secondary : "transparent")
++                }
++
++                contentItem: T.Label {
++                    horizontalAlignment: Text.AlignHCenter
++                    verticalAlignment: Text.AlignVCenter
++                    text: tab.text
++                    color: tab.active ? theme.accent : viewTheme.fg.primary
++                    font.pixelSize: VLCStyle.fontSize_large
++                }
++            }
++        }
++
++        Widgets.IconToolButton {
++            id: closeButton
++
++            anchors.verticalCenter: parent.verticalCenter
++
++            text: VLCIcons.close
++            description: qsTr("Close")
++            font.pixelSize: VLCStyle.icon_normal
++
++            onClicked: root.closeRequested()
++        }
++    }
++
++    Flickable {
++        id: content
++
++        anchors.left: parent.left
++        anchors.right: parent.right
++        anchors.top: tabRow.bottom
++        anchors.bottom: parent.bottom
++        anchors.margins: VLCStyle.dp(16, VLCStyle.scale)
++
++        clip: true
++        contentHeight: pages.implicitHeight
++        boundsBehavior: Flickable.StopAtBounds
++
++        T.ScrollBar.vertical: Widgets.ScrollBarExt { }
++
++        StackLayout {
++            id: pages
++
++            width: content.width - VLCStyle.dp(8, VLCStyle.scale)
++            currentIndex: root.currentTab
++
++            // Playback
++            ColumnLayout {
++                spacing: VLCStyle.dp(14, VLCStyle.scale)
++
++                SectionTitle { text: qsTr("Playback") }
++
++                LabeledRow {
++                    label: qsTr("Speed")
++                    SpeedSlider { Layout.fillWidth: true }
++                }
++
++                LabeledRow {
++                    label: qsTr("Audio visualizer")
++                    visible: !Player.hasVideoOutput
++                    ChoiceDropdown { model: Player.audioVisualization }
++                }
++
++                MoreButton {
++                    text: qsTr("Open playback settings")
++                    onClicked: DialogsProvider.prefsDialog()
++                }
++            }
++
++            // Video
++            ColumnLayout {
++                spacing: VLCStyle.dp(14, VLCStyle.scale)
++
++                SectionTitle { text: qsTr("Defaults") }
++
++                LabeledRow { label: qsTr("Video track"); ChoiceDropdown { model: Player.videoTracks } }
++                LabeledRow { label: qsTr("Zoom"); ChoiceDropdown { model: Player.zoom } }
++                LabeledRow { label: qsTr("Aspect ratio"); ChoiceDropdown { model: Player.aspectRatio } }
++                LabeledRow { label: qsTr("Crop"); ChoiceDropdown { model: Player.crop } }
++                LabeledRow { label: qsTr("Fit"); ChoiceDropdown { model: Player.fit } }
++                LabeledRow { label: qsTr("Deinterlacing"); ChoiceDropdown { model: Player.deinterlace } }
++                LabeledRow { label: qsTr("Deinterlacing method"); ChoiceDropdown { model: Player.deinterlaceMode } }
++                LabeledRow { label: qsTr("Stereo mode"); ChoiceDropdown { model: Player.videoStereoMode } }
++
++                MoreButton {
++                    text: qsTr("Video filters and effects")
++                    onClicked: DialogsProvider.extendedDialog()
++                }
++            }
++
++            // Audio
++            ColumnLayout {
++                spacing: VLCStyle.dp(14, VLCStyle.scale)
++
++                SectionTitle { text: qsTr("Defaults") }
++
++                LabeledRow { label: qsTr("Audio track"); ChoiceDropdown { model: Player.audioTracks } }
++                LabeledRow { label: qsTr("Stereo mode"); ChoiceDropdown { model: Player.audioStereoMode } }
++
++                SectionTitle { text: qsTr("Synchronization"); Layout.topMargin: VLCStyle.dp(8, VLCStyle.scale) }
++
++                LabeledRow {
++                    label: qsTr("Audio track delay")
++                    DelaySlider {
++                        Layout.fillWidth: true
++                        delayMS: Player.audioDelayMS
++                        onMoved: (ms) => Player.audioDelayMS = ms
++                    }
++                }
++
++                SectionTitle { text: qsTr("Effects"); Layout.topMargin: VLCStyle.dp(8, VLCStyle.scale) }
++
++                SettingsRow { Layout.fillWidth: true; controlWidth: VLCStyle.dp(190, VLCStyle.scale); row: ({ option: "equalizer-preset", label: qsTr("Equalizer") }) }
++
++                MoreButton {
++                    text: qsTr("Equalizer and audio effects")
++                    onClicked: DialogsProvider.extendedDialog()
++                }
++            }
++
++            // Subtitles
++            ColumnLayout {
++                spacing: VLCStyle.dp(14, VLCStyle.scale)
++
++                SectionTitle { text: qsTr("Defaults") }
++
++                LabeledRow { label: qsTr("Subtitle track"); ChoiceDropdown { model: Player.subtitleTracks } }
++
++                SectionTitle { text: qsTr("Synchronization"); Layout.topMargin: VLCStyle.dp(8, VLCStyle.scale) }
++
++                LabeledRow {
++                    label: qsTr("Subtitle track delay")
++                    DelaySlider {
++                        Layout.fillWidth: true
++                        delayMS: Player.subtitleDelayMS
++                        onMoved: (ms) => Player.subtitleDelayMS = ms
++                    }
++                }
++
++                SectionTitle { text: qsTr("Appearance"); Layout.topMargin: VLCStyle.dp(8, VLCStyle.scale) }
++
++                // Saved settings, used for the next subtitles shown
++                SettingsRow { Layout.fillWidth: true; controlWidth: VLCStyle.dp(190, VLCStyle.scale); row: ({ option: "freetype-font", label: qsTr("Font") }) }
++                SettingsRow { Layout.fillWidth: true; controlWidth: VLCStyle.dp(190, VLCStyle.scale); row: ({ option: "freetype-bold", label: qsTr("Bold") }) }
++                SettingsRow { Layout.fillWidth: true; controlWidth: VLCStyle.dp(190, VLCStyle.scale); row: ({ option: "freetype-color", label: qsTr("Text color") }) }
++                SettingsRow { Layout.fillWidth: true; controlWidth: VLCStyle.dp(190, VLCStyle.scale); row: ({ option: "freetype-outline-thickness", label: qsTr("Outline") }) }
++                SettingsRow { Layout.fillWidth: true; controlWidth: VLCStyle.dp(190, VLCStyle.scale); row: ({ option: "freetype-outline-color", label: qsTr("Outline color") }) }
++                SettingsRow { Layout.fillWidth: true; controlWidth: VLCStyle.dp(190, VLCStyle.scale); row: ({ option: "freetype-background-opacity", label: qsTr("Background opacity") }) }
++
++                MoreButton {
++                    text: qsTr("Open subtitle settings")
++                    onClicked: DialogsProvider.prefsDialog()
++                }
++            }
++        }
++    }
++
++    // A label above its control, as in the design's narrow sidebar
++    component LabeledRow: ColumnLayout {
++        property string label
++
++        Layout.fillWidth: true
++        spacing: VLCStyle.dp(8, VLCStyle.scale)
++
++        ColorContext { id: rowTheme; colorSet: ColorContext.View }
++
++        T.Label {
++            text: parent.label
++            color: rowTheme.fg.primary
++            font.pixelSize: VLCStyle.fontSize_large
++        }
++    }
++
++    component SectionTitle: T.Label {
++        ColorContext { id: titleTheme; colorSet: ColorContext.Item }
++
++        color: titleTheme.fg.highlight
++        font.pixelSize: VLCStyle.fontSize_xlarge
++        font.weight: Font.DemiBold
++    }
++
++    // Dropdown over a player choice model (tracks, zoom, crop, ...): the
++    // "checked" row is the current one, selecting sets "checked" on a row.
++    component ChoiceDropdown: T.ComboBox {
++        id: combo
++
++        Layout.fillWidth: true
++        implicitHeight: VLCStyle.dp(36, VLCStyle.scale)
++
++        textRole: "display"
++
++        enabled: count > 0
++
++        ColorContext { id: comboTheme; colorSet: ColorContext.Window }
++        ColorContext { id: comboView; colorSet: ColorContext.View }
++        ColorContext { id: comboField; colorSet: ColorContext.Slider }
++
++        // Find and select rows through their model data
++        Instantiator {
++            id: rows
++
++            model: combo.model
++
++            delegate: QtObject {
++                required property var model
++                required property int index
++                required property bool checked
++
++                onCheckedChanged: if (checked) combo.currentIndex = index
++                Component.onCompleted: if (checked) combo.currentIndex = index
++
++                function select() { model.checked = true }
++            }
++        }
++
++        onActivated: (index) => {
++            const row = rows.objectAt(index)
++            if (row)
++                row.select()
++        }
++
++        background: Rectangle {
++            radius: VLCStyle.dp(4, VLCStyle.scale)
++            color: comboField.bg.primary
++            opacity: combo.enabled ? 1.0 : 0.5
++        }
++
++        contentItem: T.Label {
++            leftPadding: VLCStyle.dp(14, VLCStyle.scale)
++            rightPadding: VLCStyle.dp(40, VLCStyle.scale)
++            verticalAlignment: Text.AlignVCenter
++            text: combo.count > 0 ? combo.displayText : qsTr("Not available")
++            color: comboView.fg.primary
++            font.pixelSize: VLCStyle.fontSize_large
++            elide: Text.ElideRight
++        }
++
++        indicator: Widgets.IconLabel {
++            x: combo.width - width - VLCStyle.dp(12, VLCStyle.scale)
++            anchors.verticalCenter: parent.verticalCenter
++            text: VLCIcons.chevron_down
++            color: comboView.fg.primary
++            font.pixelSize: VLCStyle.icon_normal
++        }
++
++        delegate: T.ItemDelegate {
++            required property var model
++            required property int index
++
++            width: combo.width - 2 * VLCStyle.dp(4, VLCStyle.scale)
++            implicitHeight: VLCStyle.dp(32, VLCStyle.scale)
++
++            highlighted: combo.highlightedIndex === index
++
++            background: Rectangle {
++                radius: VLCStyle.dp(3, VLCStyle.scale)
++                color: (parent.highlighted || parent.hovered) ? comboView.border : "transparent"
++            }
++
++            contentItem: T.Label {
++                leftPadding: VLCStyle.dp(10, VLCStyle.scale)
++                verticalAlignment: Text.AlignVCenter
++                text: model.display
++                color: index === combo.currentIndex ? comboTheme.accent : comboView.fg.primary
++                font.pixelSize: VLCStyle.fontSize_large
++                elide: Text.ElideRight
++            }
++        }
++
++        popup: T.Popup {
++            y: combo.height + VLCStyle.dp(4, VLCStyle.scale)
++            width: combo.width
++            implicitHeight: Math.min(contentItem.implicitHeight + 2 * padding, VLCStyle.dp(320, VLCStyle.scale))
++            padding: VLCStyle.dp(4, VLCStyle.scale)
++
++            contentItem: ListView {
++                clip: true
++                implicitHeight: contentHeight
++                model: combo.popup.visible ? combo.delegateModel : null
++                currentIndex: combo.highlightedIndex
++                boundsBehavior: Flickable.StopAtBounds
++            }
++
++            background: Rectangle {
++                radius: VLCStyle.dp(6, VLCStyle.scale)
++                color: comboTheme.bg.secondary
++                border.width: VLCStyle.border
++                border.color: comboView.border
++            }
++        }
++    }
++
++    // -10 s to +10 s slider with the delay written next to it, and a reset
++    component DelaySlider: RowLayout {
++        id: delaySlider
++
++        property int delayMS: 0
++        signal moved(int ms)
++
++        spacing: VLCStyle.dp(10, VLCStyle.scale)
++
++        ColorContext { id: dsTheme; colorSet: ColorContext.Window }
++        ColorContext { id: dsField; colorSet: ColorContext.Slider }
++        ColorContext { id: dsView; colorSet: ColorContext.View }
++
++        T.Slider {
++            id: delayInput
++
++            Layout.fillWidth: true
++            implicitHeight: VLCStyle.dp(28, VLCStyle.scale)
++
++            from: -10000
++            to: 10000
++            stepSize: 50
++            value: delaySlider.delayMS
++
++            onMoved: delaySlider.moved(Math.round(value))
++
++            background: Rectangle {
++                x: delayInput.leftPadding
++                y: delayInput.topPadding + (delayInput.availableHeight - height) / 2
++                width: delayInput.availableWidth
++                height: VLCStyle.dp(8, VLCStyle.scale)
++                radius: height / 2
++                color: dsField.bg.primary
++
++                // Zero mark in the middle
++                Rectangle {
++                    anchors.centerIn: parent
++                    width: VLCStyle.dp(2, VLCStyle.scale)
++                    height: parent.height
++                    color: dsView.border
++                }
++            }
++
++            handle: Rectangle {
++                x: delayInput.leftPadding + delayInput.visualPosition * (delayInput.availableWidth - width)
++                y: delayInput.topPadding + (delayInput.availableHeight - height) / 2
++                width: VLCStyle.dp(8, VLCStyle.scale)
++                height: VLCStyle.dp(20, VLCStyle.scale)
++                radius: VLCStyle.dp(3, VLCStyle.scale)
++                color: dsTheme.accent
++            }
++        }
++
++        T.Label {
++            Layout.preferredWidth: VLCStyle.dp(72, VLCStyle.scale)
++            horizontalAlignment: Text.AlignRight
++            text: qsTr("%1 s").arg((delaySlider.delayMS / 1000).toFixed(3))
++            color: dsView.fg.primary
++            font.pixelSize: VLCStyle.fontSize_large
++        }
++
++        Widgets.IconToolButton {
++            text: VLCIcons.history
++            description: qsTr("Reset")
++            font.pixelSize: VLCStyle.icon_normal
++            enabled: delaySlider.delayMS !== 0
++            onClicked: delaySlider.moved(0)
++        }
++    }
++
++    // Playback speed with the usual steps marked under the track
++    component SpeedSlider: ColumnLayout {
++        id: speedSlider
++
++        readonly property var steps: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
++
++        spacing: VLCStyle.dp(4, VLCStyle.scale)
++
++        ColorContext { id: ssTheme; colorSet: ColorContext.Window }
++        ColorContext { id: ssField; colorSet: ColorContext.Slider }
++        ColorContext { id: ssView; colorSet: ColorContext.View }
++
++        RowLayout {
++            spacing: VLCStyle.dp(10, VLCStyle.scale)
++
++            T.Slider {
++                id: speedInput
++
++                Layout.fillWidth: true
++                implicitHeight: VLCStyle.dp(28, VLCStyle.scale)
++
++                from: 0.25
++                to: 2
++                stepSize: 0.05
++                value: Player.rate
++                enabled: Player.ratechangable
++
++                onMoved: {
++                    // Snap to the marked steps when close to one
++                    let rate = value
++                    for (const step of speedSlider.steps) {
++                        if (Math.abs(step - rate) < 0.04)
++                            rate = step
++                    }
++                    Player.rate = rate
++                }
++
++                background: Rectangle {
++                    x: speedInput.leftPadding
++                    y: speedInput.topPadding + (speedInput.availableHeight - height) / 2
++                    width: speedInput.availableWidth
++                    height: VLCStyle.dp(8, VLCStyle.scale)
++                    radius: height / 2
++                    color: ssField.bg.primary
++
++                    Rectangle {
++                        width: speedInput.visualPosition * parent.width
++                        height: parent.height
++                        radius: parent.radius
++                        color: ssField.bg.secondary
++                    }
++                }
++
++                handle: Rectangle {
++                    x: speedInput.leftPadding + speedInput.visualPosition * (speedInput.availableWidth - width)
++                    y: speedInput.topPadding + (speedInput.availableHeight - height) / 2
++                    width: VLCStyle.dp(8, VLCStyle.scale)
++                    height: VLCStyle.dp(20, VLCStyle.scale)
++                    radius: VLCStyle.dp(3, VLCStyle.scale)
++                    color: ssTheme.accent
++                }
++            }
++
++            T.Label {
++                Layout.preferredWidth: VLCStyle.dp(48, VLCStyle.scale)
++                horizontalAlignment: Text.AlignRight
++                text: qsTr("%1x").arg(+Player.rate.toFixed(2))
++                color: ssView.fg.primary
++                font.pixelSize: VLCStyle.fontSize_large
++            }
++        }
++
++        // Step buttons: 0.25 ... 2
++        Row {
++            Layout.fillWidth: true
++            spacing: VLCStyle.dp(2, VLCStyle.scale)
++
++            Repeater {
++                model: speedSlider.steps
++
++                T.AbstractButton {
++                    id: stepButton
++
++                    required property real modelData
++
++                    readonly property bool active: Math.abs(Player.rate - modelData) < 0.001
++
++                    width: (speedSlider.width - 7 * VLCStyle.dp(2, VLCStyle.scale)) / 8
++                    height: VLCStyle.dp(28, VLCStyle.scale)
++
++                    text: String(modelData)
++                    enabled: Player.ratechangable
++                    onClicked: Player.rate = modelData
++
++                    background: Rectangle {
++                        radius: VLCStyle.dp(3, VLCStyle.scale)
++                        color: stepButton.active ? ssField.bg.secondary : ssTheme.bg.secondary
++                    }
++
++                    contentItem: T.Label {
++                        horizontalAlignment: Text.AlignHCenter
++                        verticalAlignment: Text.AlignVCenter
++                        text: stepButton.text
++                        color: stepButton.active ? ssTheme.accent : ssView.fg.primary
++                        font.pixelSize: VLCStyle.fontSize_normal
++                    }
++                }
++            }
++        }
++    }
++
++    // Full-width link to the full settings or the effects window
++    component MoreButton: T.AbstractButton {
++        id: moreButton
++
++        Layout.fillWidth: true
++        Layout.topMargin: VLCStyle.dp(12, VLCStyle.scale)
++        implicitHeight: VLCStyle.dp(36, VLCStyle.scale)
++
++        ColorContext { id: mbTheme; colorSet: ColorContext.Window }
++        ColorContext { id: mbView; colorSet: ColorContext.View }
++
++        background: Rectangle {
++            radius: VLCStyle.dp(4, VLCStyle.scale)
++            color: mbTheme.bg.secondary
++            opacity: moreButton.hovered ? 0.8 : 1.0
++        }
++
++        contentItem: Item {
++            Row {
++                anchors.centerIn: parent
++                spacing: VLCStyle.dp(8, VLCStyle.scale)
++
++                T.Label {
++                    anchors.verticalCenter: parent.verticalCenter
++                    text: moreButton.text
++                    color: mbView.fg.primary
++                    font.pixelSize: VLCStyle.fontSize_large
++                }
++
++                Widgets.IconLabel {
++                    anchors.verticalCenter: parent.verticalCenter
++                    text: VLCIcons.ic_fluent_chevron_right_24
++                    color: mbView.fg.primary
++                    font.pixelSize: VLCStyle.icon_normal
++                }
++            }
++        }
++    }
++}
+diff --git a/modules/gui/qt/player/qml/controlbarcontrols/ExtendedSettingsButton.qml b/modules/gui/qt/player/qml/controlbarcontrols/ExtendedSettingsButton.qml
+index 5c95377..fd684a8 100644
+--- a/modules/gui/qt/player/qml/controlbarcontrols/ExtendedSettingsButton.qml
++++ b/modules/gui/qt/player/qml/controlbarcontrols/ExtendedSettingsButton.qml
+@@ -28,9 +28,20 @@ Widgets.IconToolButton {
+ 
+     text: VLCIcons.effect_filter
+ 
+-    description: qsTr("Extended settings")
++    description: qsTr("Playback settings")
+ 
+     AccessibleCompat.id: "extendedSettingsButton"
+ 
+-    onClicked: DialogsProvider.extendedDialog()
++    // Juxtopposed: toggles the player's quick settings sidebar; the old
++    // effects window is still used outside the player
++    readonly property var _player: (typeof rootPlayer !== 'undefined') ? rootPlayer : null
++
++    checked: !!_player && _player.quickSettingsVisible
++
++    onClicked: {
++        if (_player)
++            _player.quickSettingsVisible = !_player.quickSettingsVisible
++        else
++            DialogsProvider.extendedDialog()
++    }
+ }
+-- 
+2.45.0.windows.1
+
