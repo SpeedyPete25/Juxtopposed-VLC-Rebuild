@@ -60,9 +60,12 @@ an inset rounded card on a single dark background, settings window rebuilt in
 QML (13 categories, plain-language rows over VLC's options, info icons, search,
 advanced options per category; the classic dialog stays reachable),
 in-player quick settings sidebar (Playback, Video, Audio and Subtitles tabs
-with live speed, delay, track, zoom, crop and deinterlacing controls).
+with live speed, delay, track, zoom, crop and deinterlacing controls),
+keyboard shortcuts dialog (grouped hotkeys and global hotkeys, search by
+field, press-a-key editing that frees conflicting keys, Save/Cancel; opened
+from Settings > Controls or Tools > Keyboard Shortcuts, applies after restart).
 
 Not yet: library browsing inside the player side panel, settings extras
-(accent color, interface language, equalizer board, keyboard shortcuts
-dialog, extensions list), subtitle presets and timeline, onboarding,
+(accent color, interface language, equalizer board, extensions list),
+subtitle presets and timeline, onboarding,
 dialogs, context menus, light theme, library icons.
