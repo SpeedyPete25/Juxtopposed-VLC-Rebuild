@@ -1,0 +1,1144 @@
+From 4622954a6eacf3af49c85951348d17ba2d861eaa Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Sun, 25 Oct 2026 20:14:42 +1030
+Subject: [PATCH] qt: Juxtopposed keyboard shortcuts dialog
+
+Adds a QML keyboard shortcuts dialog matching the redesign: hotkeys and global hotkeys grouped by purpose, search with a field scope, press-a-key editing that frees a key already used by another action, and Save/Cancel that writes through VLCSettings. It opens from the Controls settings page and a new Tools > Keyboard Shortcuts menu entry via DialogsProvider::hotkeysDialog(), which falls back to the classic preferences when no QML dialog is connected. Also adds an edit (pencil) glyph to the icon font.
+---
+ modules/gui/qt/Makefile.am                    |   1 +
+ .../qt/dialogs/dialogs/qml/HotkeysWindow.qml  | 744 ++++++++++++++++++
+ .../qt/dialogs/dialogs/qml/SettingsPages.qml  |   2 +-
+ .../qt/dialogs/dialogs/qml/SettingsRow.qml    |   3 +
+ modules/gui/qt/dialogs/dialogs_provider.cpp   |  10 +
+ modules/gui/qt/dialogs/dialogs_provider.hpp   |   4 +
+ .../qt/dialogs/preferences/vlc_settings.cpp   |  78 ++
+ .../qt/dialogs/preferences/vlc_settings.hpp   |   9 +
+ .../qt/maininterface/qml/MainInterface.qml    |  33 +
+ modules/gui/qt/menus/menus.cpp                |   4 +
+ modules/gui/qt/meson.build                    |   1 +
+ modules/gui/qt/pixmaps/VLCIcons.json          |   3 +-
+ modules/gui/qt/pixmaps/VLCIcons.ttf           | Bin 22448 -> 22616 bytes
+ modules/gui/qt/pixmaps/icons/juxt/edit.svg    |  25 +
+ modules/gui/qt/style/vlcicons.hpp             |   2 +
+ 15 files changed, 917 insertions(+), 2 deletions(-)
+ create mode 100644 modules/gui/qt/dialogs/dialogs/qml/HotkeysWindow.qml
+ create mode 100644 modules/gui/qt/pixmaps/icons/juxt/edit.svg
+
+diff --git a/modules/gui/qt/Makefile.am b/modules/gui/qt/Makefile.am
+index c5d5f8c..5f848d2 100644
+--- a/modules/gui/qt/Makefile.am
++++ b/modules/gui/qt/Makefile.am
+@@ -1048,6 +1048,7 @@ libqml_module_dialogs_a_QML = \
+ 	dialogs/dialogs/qml/ModalDialog.qml \
+ 	dialogs/dialogs/qml/SettingsPages.qml \
+ 	dialogs/dialogs/qml/SettingsRow.qml \
++	dialogs/dialogs/qml/HotkeysWindow.qml \
+ 	dialogs/dialogs/qml/SettingsWindow.qml \
+ 	dialogs/dialogs/qml/WindowDialog.qml \
+ 	dialogs/toolbar/qml/EditorDNDDelegate.qml \
+diff --git a/modules/gui/qt/dialogs/dialogs/qml/HotkeysWindow.qml b/modules/gui/qt/dialogs/dialogs/qml/HotkeysWindow.qml
+new file mode 100644
+index 0000000..be714dd
+--- /dev/null
++++ b/modules/gui/qt/dialogs/dialogs/qml/HotkeysWindow.qml
+@@ -0,0 +1,744 @@
++/*****************************************************************************
++ * Copyright (C) 2026 VLC authors and VideoLAN
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * ( at your option ) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
++ *****************************************************************************/
++import QtQuick
++import QtQuick.Layouts
++import QtQuick.Templates as T
++
++import VLC.MainInterface
++import VLC.Style
++import VLC.Widgets as Widgets
++import VLC.Dialogs
++
++// Juxtopposed: the keyboard shortcuts dialog. Every VLC hotkey grouped by
++// what it does, with its hotkey and global hotkey. Edits are kept here until
++// Save writes them to the configuration; Cancel drops them.
++FocusScope {
++    id: root
++
++    signal closed()
++
++    // configuration name ("key-..." or "global-key-...") -> edited value
++    property var edits: ({})
++
++    // the field waiting for a key press, as its configuration name
++    property string capturing: ""
++
++    // what the last edit changed elsewhere, shown next to the buttons
++    property string note: ""
++
++    readonly property var entries: VLCSettings.hotkeys()
++
++    readonly property var _saved: {
++        const map = {}
++        for (const entry of entries) {
++            map[entry.name] = entry.value
++            map["global-" + entry.name] = entry.globalValue
++        }
++        return map
++    }
++
++    property var _rows: []
++
++    readonly property bool dirty: Object.keys(edits).length > 0
++
++    readonly property var groups: [
++        { name: qsTr("Basic"), match: /fullscreen|^key-position$|^key-intf|^key-quit|popup-menu/ },
++        { name: qsTr("Playback"), match: /play|pause|stop|next|prev|faster|slower|rate|jump|frame|record|loop|random|program/ },
++        { name: qsTr("Audio"), match: /vol|audio|mute/ },
++        { name: qsTr("Subtitles"), match: /sub/ },
++        { name: qsTr("Video"), match: /aspect|crop|zoom|deinterlace|snapshot|wallpaper|autoscale|scale|viewpoint|fov|roll|video/ },
++        { name: qsTr("Navigation"), match: /^key-nav-|title|chapter|disc-menu/ },
++        { name: qsTr("Bookmarks"), match: /bookmark/ }
++    ]
++
++    focus: true
++
++    Keys.onEscapePressed: root.closed()
++
++    Component.onCompleted: {
++        _refresh()
++        searchInput.forceActiveFocus()
++    }
++
++    readonly property ColorContext colorContext: ColorContext {
++        id: theme
++        colorSet: ColorContext.Window
++    }
++
++    ColorContext { id: viewTheme; colorSet: ColorContext.View }
++    ColorContext { id: fieldTheme; colorSet: ColorContext.Slider }
++    ColorContext { id: inputTheme; colorSet: ColorContext.TextField }
++    ColorContext { id: itemTheme; colorSet: ColorContext.Item }
++
++    function valueOf(cfg) {
++        return (cfg in edits) ? edits[cfg] : (_saved[cfg] ?? "")
++    }
++
++    function _keys(value) {
++        return (value ?? "").split("\t").filter((k) => k.length > 0 && k !== "Unset")
++    }
++
++    // a key as shown, letters in capitals as printed on the keys ("Ctrl+F")
++    function keyText(key) {
++        return VLCSettings.keyLabel(key).replace(/(^|\+)([a-z])$/, (m, p, c) => p + c.toUpperCase())
++    }
++
++    function labelOf(cfg) {
++        return _keys(valueOf(cfg)).map((k) => keyText(k)).join(", ")
++    }
++
++    function _textOf(name) {
++        const entry = entries.find((e) => e.name === name)
++        return entry ? entry.text : name
++    }
++
++    // Set a field to one key, taking it away from any other action of the
++    // same column that used it
++    function assign(cfg, key) {
++        const next = Object.assign({}, edits)
++        const global = cfg.startsWith("global-")
++        const taken = []
++
++        if (key.length > 0) {
++            for (const entry of entries) {
++                const other = global ? "global-" + entry.name : entry.name
++                if (other === cfg)
++                    continue
++                const keys = _keys((other in next) ? next[other] : _saved[other])
++                if (keys.includes(key)) {
++                    next[other] = keys.filter((k) => k !== key).join("\t")
++                    taken.push(entry.text)
++                }
++            }
++        }
++
++        next[cfg] = key
++        if (next[cfg] === (_saved[cfg] ?? ""))
++            delete next[cfg]
++
++        edits = next
++        note = taken.length > 0 ? qsTr("%1 was removed from \"%2\"").arg(keyText(key)).arg(taken.join("\", \""))
++                                : ""
++    }
++
++    function save() {
++        for (const cfg in edits)
++            VLCSettings.setValue(cfg, edits[cfg])
++        edits = {}
++        root.closed()
++    }
++
++    // Rebuild the list for the search: group headers followed by their rows
++    function _refresh() {
++        const q = searchInput.text.trim().toLowerCase()
++        const scope = scopeBox.currentIndex
++
++        const matches = (entry) => {
++            if (q.length === 0)
++                return true
++            const action = entry.text.toLowerCase()
++            const hotkey = labelOf(entry.name).toLowerCase()
++            const global = labelOf("global-" + entry.name).toLowerCase()
++            switch (scope) {
++            case 1: return action.includes(q)
++            case 2: return hotkey.includes(q)
++            case 3: return global.includes(q)
++            default: return action.includes(q) || hotkey.includes(q) || global.includes(q)
++            }
++        }
++
++        const buckets = groups.map(() => [])
++        const other = []
++        for (const entry of entries) {
++            if (!matches(entry))
++                continue
++            const index = groups.findIndex((g) => g.match.test(entry.name))
++            if (index >= 0)
++                buckets[index].push(entry)
++            else
++                other.push(entry)
++        }
++
++        const rows = []
++        const push = (name, list) => {
++            if (list.length === 0)
++                return
++            rows.push({ header: name, first: rows.length === 0 })
++            list.forEach((entry) => rows.push(entry))
++        }
++        groups.forEach((g, i) => push(g.name, buckets[i]))
++        push(qsTr("Other"), other)
++
++        _rows = rows
++    }
++
++    // Dim the interface behind the dialog; clicking outside cancels it
++    Rectangle {
++        anchors.fill: parent
++        color: Qt.rgba(0, 0, 0, 0.5)
++
++        TapHandler { onTapped: root.closed() }
++    }
++
++    Rectangle {
++        id: card
++
++        anchors.centerIn: parent
++        width: Math.min(VLCStyle.dp(1048, VLCStyle.scale), root.width - 2 * VLCStyle.margin_large)
++        height: Math.min(VLCStyle.dp(800, VLCStyle.scale), root.height - 2 * VLCStyle.margin_large)
++
++        radius: VLCStyle.dp(14, VLCStyle.scale)
++        color: theme.bg.primary
++        clip: true
++
++        TapHandler { onTapped: root.capturing = "" }
++
++        Widgets.DefaultShadow { }
++
++        // Header: title, close, search and its scope
++        Rectangle {
++            id: header
++
++            anchors.left: parent.left
++            anchors.right: parent.right
++            anchors.top: parent.top
++
++            height: VLCStyle.dp(96, VLCStyle.scale)
++            radius: card.radius
++            color: fieldTheme.bg.primary
++
++            T.Label {
++                anchors.left: parent.left
++                anchors.leftMargin: VLCStyle.dp(19, VLCStyle.scale)
++                anchors.verticalCenter: closeButton.verticalCenter
++
++                text: qsTr("Keyboard Shortcuts")
++                color: itemTheme.fg.highlight
++                font.pixelSize: VLCStyle.fontSize_large
++            }
++
++            Widgets.IconToolButton {
++                id: closeButton
++
++                anchors.right: parent.right
++                anchors.rightMargin: VLCStyle.dp(9, VLCStyle.scale)
++                anchors.top: parent.top
++                anchors.topMargin: VLCStyle.dp(9, VLCStyle.scale)
++
++                text: VLCIcons.close
++                description: qsTr("Close")
++                font.pixelSize: VLCStyle.icon_normal
++
++                onClicked: root.closed()
++            }
++
++            Rectangle {
++                id: searchField
++
++                anchors.left: parent.left
++                anchors.leftMargin: VLCStyle.dp(9, VLCStyle.scale)
++                anchors.right: scopeBox.left
++                anchors.rightMargin: VLCStyle.dp(10, VLCStyle.scale)
++                anchors.bottom: parent.bottom
++                anchors.bottomMargin: VLCStyle.dp(9, VLCStyle.scale)
++
++                height: VLCStyle.dp(34, VLCStyle.scale)
++                radius: VLCStyle.dp(6, VLCStyle.scale)
++                color: theme.bg.secondary
++                border.width: searchInput.activeFocus ? VLCStyle.border : 0
++                border.color: theme.accent
++
++                Widgets.IconLabel {
++                    id: searchIcon
++
++                    anchors.left: parent.left
++                    anchors.leftMargin: VLCStyle.dp(8, VLCStyle.scale)
++                    anchors.verticalCenter: parent.verticalCenter
++
++                    text: VLCIcons.search
++                    color: inputTheme.fg.secondary
++                    font.pixelSize: VLCStyle.icon_normal
++                }
++
++                TextInput {
++                    id: searchInput
++
++                    anchors.left: searchIcon.right
++                    anchors.leftMargin: VLCStyle.dp(10, VLCStyle.scale)
++                    anchors.right: parent.right
++                    anchors.rightMargin: VLCStyle.dp(8, VLCStyle.scale)
++                    anchors.top: parent.top
++                    anchors.bottom: parent.bottom
++
++                    verticalAlignment: TextInput.AlignVCenter
++                    clip: true
++                    selectByMouse: true
++
++                    color: viewTheme.fg.primary
++                    selectionColor: fieldTheme.bg.secondary
++                    font.pixelSize: VLCStyle.fontSize_large
++
++                    Accessible.name: qsTr("Search Keyboard Shortcuts")
++
++                    onTextChanged: root._refresh()
++
++                    Keys.onEscapePressed: (event) => {
++                        if (text.length > 0) {
++                            text = ""
++                            event.accepted = true
++                        } else {
++                            event.accepted = false
++                        }
++                    }
++
++                    T.Label {
++                        anchors.verticalCenter: parent.verticalCenter
++                        visible: !searchInput.length
++                        text: qsTr("Search Keyboard Shortcuts...")
++                        color: inputTheme.fg.secondary
++                        font.pixelSize: VLCStyle.fontSize_large
++                    }
++                }
++            }
++
++            T.ComboBox {
++                id: scopeBox
++
++                anchors.right: parent.right
++                anchors.rightMargin: VLCStyle.dp(9, VLCStyle.scale)
++                anchors.verticalCenter: searchField.verticalCenter
++
++                width: VLCStyle.dp(200, VLCStyle.scale)
++                height: searchField.height
++
++                model: [ qsTr("All Fields"), qsTr("Action"), qsTr("Hotkey"), qsTr("Global Hotkey") ]
++
++                Accessible.name: qsTr("Search in")
++
++                onCurrentIndexChanged: root._refresh()
++
++                background: Rectangle {
++                    radius: VLCStyle.dp(6, VLCStyle.scale)
++                    color: theme.bg.secondary
++                    border.width: scopeBox.visualFocus ? VLCStyle.border : 0
++                    border.color: theme.accent
++                }
++
++                contentItem: T.Label {
++                    leftPadding: VLCStyle.dp(12, VLCStyle.scale)
++                    rightPadding: VLCStyle.dp(40, VLCStyle.scale)
++                    verticalAlignment: Text.AlignVCenter
++                    text: scopeBox.displayText
++                    color: viewTheme.fg.primary
++                    font.pixelSize: VLCStyle.fontSize_large
++                    elide: Text.ElideRight
++                }
++
++                indicator: Widgets.IconLabel {
++                    x: scopeBox.width - width - VLCStyle.dp(8, VLCStyle.scale)
++                    anchors.verticalCenter: parent.verticalCenter
++                    text: VLCIcons.chevron_down
++                    color: viewTheme.fg.primary
++                    font.pixelSize: VLCStyle.icon_normal
++                }
++
++                delegate: T.ItemDelegate {
++                    required property var modelData
++                    required property int index
++
++                    width: scopeBox.width - 2 * VLCStyle.dp(4, VLCStyle.scale)
++                    implicitHeight: VLCStyle.dp(32, VLCStyle.scale)
++
++                    highlighted: scopeBox.highlightedIndex === index
++
++                    background: Rectangle {
++                        radius: VLCStyle.dp(3, VLCStyle.scale)
++                        color: (parent.highlighted || parent.hovered) ? viewTheme.border : "transparent"
++                    }
++
++                    contentItem: T.Label {
++                        leftPadding: VLCStyle.dp(10, VLCStyle.scale)
++                        verticalAlignment: Text.AlignVCenter
++                        text: modelData
++                        color: index === scopeBox.currentIndex ? theme.accent : viewTheme.fg.primary
++                        font.pixelSize: VLCStyle.fontSize_large
++                    }
++                }
++
++                popup: T.Popup {
++                    y: scopeBox.height + VLCStyle.dp(4, VLCStyle.scale)
++                    width: scopeBox.width
++                    implicitHeight: contentItem.implicitHeight + 2 * padding
++                    padding: VLCStyle.dp(4, VLCStyle.scale)
++
++                    contentItem: ListView {
++                        clip: true
++                        implicitHeight: contentHeight
++                        model: scopeBox.popup.visible ? scopeBox.delegateModel : null
++                        currentIndex: scopeBox.highlightedIndex
++                        boundsBehavior: Flickable.StopAtBounds
++                    }
++
++                    background: Rectangle {
++                        radius: VLCStyle.dp(6, VLCStyle.scale)
++                        color: theme.bg.secondary
++                        border.width: VLCStyle.border
++                        border.color: viewTheme.border
++                    }
++                }
++            }
++
++            // square off the bottom corners
++            Rectangle {
++                anchors.left: parent.left
++                anchors.right: parent.right
++                anchors.bottom: parent.bottom
++                height: parent.radius
++                color: parent.color
++                z: -1
++            }
++        }
++
++        // Column headings
++        Item {
++            id: columns
++
++            anchors.left: parent.left
++            anchors.leftMargin: VLCStyle.dp(20, VLCStyle.scale)
++            anchors.right: parent.right
++            anchors.rightMargin: VLCStyle.dp(20, VLCStyle.scale)
++            anchors.top: header.bottom
++            anchors.topMargin: VLCStyle.dp(20, VLCStyle.scale)
++
++            height: VLCStyle.dp(25, VLCStyle.scale)
++
++            // the two key columns, as in the design (379 and 738 of 1008)
++            readonly property real fieldWidth: Math.min(VLCStyle.dp(262, VLCStyle.scale), width * 0.27)
++            readonly property real globalX: width - fieldWidth
++            readonly property real hotkeyX: globalX - VLCStyle.dp(87, VLCStyle.scale) - fieldWidth
++
++            T.Label {
++                anchors.verticalCenter: parent.verticalCenter
++                text: qsTr("Action")
++                color: theme.fg.secondary
++                font.pixelSize: VLCStyle.fontSize_large
++            }
++
++            T.Label {
++                x: columns.hotkeyX
++                width: columns.fieldWidth
++                anchors.verticalCenter: parent.verticalCenter
++                horizontalAlignment: Text.AlignHCenter
++                text: qsTr("Hotkey")
++                color: theme.fg.secondary
++                font.pixelSize: VLCStyle.fontSize_large
++            }
++
++            T.Label {
++                x: columns.globalX
++                width: columns.fieldWidth
++                anchors.verticalCenter: parent.verticalCenter
++                horizontalAlignment: Text.AlignHCenter
++                text: qsTr("Global Hotkey")
++                color: theme.fg.secondary
++                font.pixelSize: VLCStyle.fontSize_large
++            }
++
++            Rectangle {
++                anchors.left: parent.left
++                anchors.right: parent.right
++                anchors.top: parent.bottom
++                anchors.topMargin: VLCStyle.dp(20, VLCStyle.scale) - height
++                height: VLCStyle.border
++                color: viewTheme.border
++            }
++        }
++
++        ListView {
++            id: list
++
++            anchors.left: columns.left
++            anchors.right: parent.right
++            anchors.rightMargin: VLCStyle.dp(8, VLCStyle.scale)
++            anchors.top: columns.bottom
++            anchors.topMargin: VLCStyle.dp(20, VLCStyle.scale)
++            anchors.bottom: footer.top
++
++            clip: true
++            boundsBehavior: Flickable.StopAtBounds
++            model: root._rows
++            reuseItems: false
++
++            T.ScrollBar.vertical: Widgets.ScrollBarExt { }
++
++            delegate: Loader {
++                required property var modelData
++
++                width: columns.width
++                sourceComponent: modelData.header !== undefined ? headerDelegate : rowDelegate
++
++                Component {
++                    id: headerDelegate
++
++                    Item {
++                        implicitHeight: VLCStyle.dp(modelData.first ? 48 : 88, VLCStyle.scale)
++
++                        Rectangle {
++                            visible: !modelData.first
++                            anchors.left: parent.left
++                            anchors.right: parent.right
++                            y: VLCStyle.dp(6, VLCStyle.scale)
++                            height: VLCStyle.border
++                            color: viewTheme.border
++                        }
++
++                        T.Label {
++                            anchors.left: parent.left
++                            anchors.bottom: parent.bottom
++                            anchors.bottomMargin: VLCStyle.dp(20, VLCStyle.scale)
++                            text: modelData.header
++                            color: theme.fg.secondary
++                            font.pixelSize: VLCStyle.fontSize_xlarge
++                        }
++                    }
++                }
++
++                Component {
++                    id: rowDelegate
++
++                    Item {
++                        implicitHeight: VLCStyle.dp(47, VLCStyle.scale)
++
++                        T.Label {
++                            anchors.left: parent.left
++                            anchors.right: hotkeyField.left
++                            anchors.rightMargin: VLCStyle.dp(16, VLCStyle.scale)
++                            y: (VLCStyle.dp(33, VLCStyle.scale) - height) / 2
++
++                            text: modelData.text
++                            color: viewTheme.fg.primary
++                            font.pixelSize: VLCStyle.fontSize_large
++                            elide: Text.ElideRight
++                        }
++
++                        KeyField {
++                            id: hotkeyField
++                            x: columns.hotkeyX
++                            width: columns.fieldWidth
++                            cfg: modelData.name
++                            actionText: modelData.text
++                        }
++
++                        KeyField {
++                            x: columns.globalX
++                            width: columns.fieldWidth
++                            cfg: "global-" + modelData.name
++                            actionText: modelData.text + " " + qsTr("(global)")
++                        }
++                    }
++                }
++            }
++
++            T.Label {
++                anchors.centerIn: parent
++                visible: list.count === 0
++                text: qsTr("No shortcuts match \"%1\"").arg(searchInput.text)
++                color: theme.fg.secondary
++                font.pixelSize: VLCStyle.fontSize_large
++            }
++        }
++
++        // Cancel, the conflict note, Save
++        Item {
++            id: footer
++
++            anchors.left: parent.left
++            anchors.right: parent.right
++            anchors.bottom: parent.bottom
++
++            height: VLCStyle.dp(72, VLCStyle.scale)
++
++            FooterButton {
++                id: cancelButton
++
++                anchors.left: parent.left
++                anchors.leftMargin: VLCStyle.dp(20, VLCStyle.scale)
++                anchors.verticalCenter: parent.verticalCenter
++
++                text: qsTr("Cancel")
++                onClicked: root.closed()
++            }
++
++            T.Label {
++                anchors.left: cancelButton.right
++                anchors.right: saveButton.left
++                anchors.margins: VLCStyle.dp(20, VLCStyle.scale)
++                anchors.verticalCenter: parent.verticalCenter
++
++                horizontalAlignment: Text.AlignHCenter
++                text: root.note.length > 0 ? root.note
++                                           : root.dirty ? qsTr("Changes apply after VLC restarts")
++                                                        : ""
++                color: theme.fg.secondary
++                font.pixelSize: VLCStyle.fontSize_normal
++                elide: Text.ElideRight
++            }
++
++            FooterButton {
++                id: saveButton
++
++                anchors.right: parent.right
++                anchors.rightMargin: VLCStyle.dp(20, VLCStyle.scale)
++                anchors.verticalCenter: parent.verticalCenter
++
++                text: qsTr("Save")
++                enabled: root.dirty
++                onClicked: root.save()
++            }
++        }
++    }
++
++    // A hotkey field: the key centered, a pencil on the right. Clicking it
++    // waits for a key press; Escape stops waiting, the cross unsets it.
++    component KeyField: T.AbstractButton {
++        id: field
++
++        required property string cfg
++        property string actionText
++
++        readonly property bool waiting: root.capturing === cfg
++        readonly property string label: root.labelOf(cfg)
++        readonly property bool edited: cfg in root.edits
++
++        ColorContext { id: kfWindow; colorSet: ColorContext.Window }
++        ColorContext { id: kfField; colorSet: ColorContext.Slider }
++        ColorContext { id: kfView; colorSet: ColorContext.View }
++
++        implicitHeight: VLCStyle.dp(33, VLCStyle.scale)
++
++        focusPolicy: Qt.StrongFocus
++        text: label
++
++        Accessible.name: qsTr("Edit %1").arg(actionText)
++
++        onClicked: {
++            root.capturing = waiting ? "" : cfg
++            // a keyboard focus reason gives the field visualFocus, which
++            // keeps VLC's own hotkey handling away from the keys typed here
++            if (root.capturing === cfg)
++                forceActiveFocus(Qt.TabFocusReason)
++        }
++
++        onActiveFocusChanged: {
++            if (!activeFocus && waiting)
++                root.capturing = ""
++        }
++
++        Keys.onShortcutOverride: (event) => event.accepted = field.waiting
++
++        Keys.onPressed: (event) => {
++            if (!field.waiting)
++                return
++            event.accepted = true
++            if (event.key === Qt.Key_Escape && event.modifiers === Qt.NoModifier) {
++                root.capturing = ""
++                return
++            }
++            const key = VLCSettings.keyFromEvent(event.key, event.modifiers, event.text)
++            if (key.length === 0)
++                return
++            root.assign(field.cfg, key)
++            root.capturing = ""
++        }
++
++        background: Rectangle {
++            radius: VLCStyle.dp(6, VLCStyle.scale)
++            color: kfField.bg.primary
++            border.width: field.waiting ? VLCStyle.border : 0
++            border.color: kfWindow.accent
++            opacity: (field.hovered && !field.waiting) ? 0.8 : 1.0
++        }
++
++        contentItem: Item {
++            T.Label {
++                anchors.centerIn: parent
++                width: parent.width - 2 * VLCStyle.dp(36, VLCStyle.scale)
++                horizontalAlignment: Text.AlignHCenter
++                text: field.waiting ? qsTr("Press a key...") : field.label
++                color: field.waiting ? kfWindow.fg.secondary
++                                     : field.edited ? kfWindow.accent : kfView.fg.primary
++                font.pixelSize: VLCStyle.fontSize_large
++                font.family: field.waiting ? Qt.application.font.family : "monospace"
++                elide: Text.ElideRight
++            }
++
++            Widgets.IconLabel {
++                anchors.right: parent.right
++                anchors.rightMargin: VLCStyle.dp(5, VLCStyle.scale)
++                anchors.verticalCenter: parent.verticalCenter
++
++                visible: !field.waiting
++                text: VLCIcons.edit
++                color: kfWindow.fg.secondary
++                font.pixelSize: VLCStyle.icon_normal
++            }
++
++            Widgets.IconToolButton {
++                anchors.right: parent.right
++                anchors.verticalCenter: parent.verticalCenter
++
++                visible: field.waiting && field.label.length > 0
++                text: VLCIcons.close
++                description: qsTr("Unset")
++                font.pixelSize: VLCStyle.icon_small
++
++                onClicked: {
++                    root.assign(field.cfg, "")
++                    root.capturing = ""
++                }
++            }
++        }
++    }
++
++    // Cancel / Save (100x32, dim until there is something to save)
++    component FooterButton: T.AbstractButton {
++        id: footerButton
++
++        ColorContext { id: fbWindow; colorSet: ColorContext.Window }
++        ColorContext { id: fbView; colorSet: ColorContext.View }
++
++        implicitWidth: VLCStyle.dp(100, VLCStyle.scale)
++        implicitHeight: VLCStyle.dp(32, VLCStyle.scale)
++
++        background: Rectangle {
++            radius: VLCStyle.dp(4, VLCStyle.scale)
++            color: fbWindow.bg.secondary
++            opacity: footerButton.hovered ? 0.8 : 1.0
++        }
++
++        contentItem: T.Label {
++            horizontalAlignment: Text.AlignHCenter
++            verticalAlignment: Text.AlignVCenter
++            text: footerButton.text
++            color: footerButton.enabled ? fbView.fg.primary : fbWindow.fg.secondary
++            opacity: footerButton.enabled ? 1.0 : 0.5
++            font.pixelSize: VLCStyle.fontSize_large
++            font.weight: Font.DemiBold
++        }
++    }
++}
+diff --git a/modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml b/modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml
+index 74b9d33..0804853 100644
+--- a/modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml
++++ b/modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml
+@@ -96,7 +96,7 @@ QtObject {
+             icon: VLCIcons.keyboard,
+             sections: [
+                 { title: qsTr("Keyboard Shortcuts"), rows: [
+-                    { special: "button", label: qsTr("Edit keyboard shortcuts"), text: qsTr("Edit"), action: "classic" }
++                    { special: "button", label: qsTr("Edit keyboard shortcuts"), text: qsTr("Edit"), action: "hotkeys" }
+                 ] },
+                 { title: qsTr("Skip Amounts"), rows: [
+                     { option: "extrashort-jump-size", label: qsTr("Very short skip"), unit: "s" },
+diff --git a/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml b/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
+index 05a9566..b034600 100644
+--- a/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
++++ b/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
+@@ -525,6 +525,9 @@ Item {
+                 case "plugins":
+                     DialogsProvider.pluginDialog()
+                     break
++                case "hotkeys":
++                    DialogsProvider.hotkeysDialog()
++                    break
+                 }
+             }
+         }
+diff --git a/modules/gui/qt/dialogs/dialogs_provider.cpp b/modules/gui/qt/dialogs/dialogs_provider.cpp
+index 07e1da4..1a9d1c1 100644
+--- a/modules/gui/qt/dialogs/dialogs_provider.cpp
++++ b/modules/gui/qt/dialogs/dialogs_provider.cpp
+@@ -298,6 +298,16 @@ void DialogsProvider::prefsDialog()
+     classicPrefsDialog();
+ }
+ 
++void DialogsProvider::hotkeysDialog()
++{
++    if (isSignalConnected(QMetaMethod::fromSignal(&DialogsProvider::hotkeysRequested)))
++    {
++        emit hotkeysRequested();
++        return;
++    }
++    classicPrefsDialog();
++}
++
+ void DialogsProvider::classicPrefsDialog()
+ {
+     if (Q_LIKELY(!m_prefsDialog))
+diff --git a/modules/gui/qt/dialogs/dialogs_provider.hpp b/modules/gui/qt/dialogs/dialogs_provider.hpp
+index 8071c96..bf164fd 100644
+--- a/modules/gui/qt/dialogs/dialogs_provider.hpp
++++ b/modules/gui/qt/dialogs/dialogs_provider.hpp
+@@ -219,6 +219,8 @@ public slots:
+     // Juxtopposed: VLC's original preferences dialog; prefsDialog() opens
+     // the QML settings window when the interface provides one.
+     void classicPrefsDialog();
++    // Juxtopposed: opens the keyboard shortcuts dialog (classic prefs if none)
++    void hotkeysDialog();
+     void firstRunDialog();
+     void extendedDialog();
+     void synchroDialog();
+@@ -309,6 +311,8 @@ signals:
+     void prefsDialogVisibleChanged();
+     // Juxtopposed: asks the QML interface to toggle its settings window
+     void settingsRequested();
++    // Juxtopposed: asks the QML interface to open its keyboard shortcuts dialog
++    void hotkeysRequested();
+ #ifdef UPDATE_CHECK
+     void updateDialogVisibleChanged();
+ #endif
+diff --git a/modules/gui/qt/dialogs/preferences/vlc_settings.cpp b/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
+index 1a1df43..d25e126 100644
+--- a/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
++++ b/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
+@@ -23,12 +23,15 @@
+ #endif
+ 
+ #include "dialogs/preferences/vlc_settings.hpp"
++#include "util/vlchotkeyconverter.hpp"
+ 
+ #include <QDesktopServices>
++#include <QKeyEvent>
+ #include <QDir>
+ #include <QFileDialog>
+ #include <QUrl>
+ 
++#include <vlc_actions.h>
+ #include <vlc_configuration.h>
+ #include <vlc_modules.h>
+ #include <vlc_plugin.h>
+@@ -244,6 +247,81 @@ QString VLCSettings::browse(const QString &name)
+     return path;
+ }
+ 
++QVariantList VLCSettings::hotkeys() const
++{
++    QVariantList result;
++
++    module_t *main = module_get_main();
++    if (!main)
++        return result;
++
++    unsigned count;
++    module_config_t *const config = module_config_get(main, &count);
++    if (!config)
++        return result;
++
++    for (unsigned i = 0; i < count; i++)
++    {
++        const module_config_t *item = &config[i];
++        if (item->i_type != CONFIG_ITEM_KEY || !item->psz_name || !item->psz_text)
++            continue;
++        const QString name = qfu(item->psz_name);
++        if (name.startsWith(QLatin1String("global-")))
++            continue;
++
++        char *value = config_GetPsz(item->psz_name);
++        const QByteArray globalName = QByteArrayLiteral("global-") + item->psz_name;
++        char *globalValue = config_GetPsz(globalName.constData());
++
++        result.append(QVariantMap{
++            { QStringLiteral("name"), name },
++            { QStringLiteral("text"), qfut(item->psz_text) },
++            { QStringLiteral("value"), qfu(value ? value : "") },
++            { QStringLiteral("globalValue"), qfu(globalValue ? globalValue : "") } });
++
++        free(value);
++        free(globalValue);
++    }
++
++    module_config_free(config);
++    return result;
++}
++
++QString VLCSettings::keyFromEvent(int key, int modifiers, const QString &text) const
++{
++    switch (key)
++    {
++    case Qt::Key_Control: case Qt::Key_Shift: case Qt::Key_Alt:
++    case Qt::Key_Meta: case Qt::Key_AltGr: case Qt::Key_unknown:
++        return {};
++    }
++
++    QKeyEvent event(QEvent::KeyPress, key, Qt::KeyboardModifiers(modifiers), text);
++    const int code = qtEventToVLCKey(&event);
++    if (code == KEY_UNSET)
++        return {};
++
++    char *str = vlc_keycode2str(code, false);
++    const QString result = qfu(str ? str : "");
++    free(str);
++    return result;
++}
++
++QString VLCSettings::keyLabel(const QString &vlcKey) const
++{
++    if (vlcKey.isEmpty() || vlcKey == QLatin1String("Unset"))
++        return {};
++
++    const uint_fast32_t code = vlc_str2keycode(vlcKey.toUtf8().constData());
++    if (code == KEY_UNSET)
++        return vlcKey;
++
++    char *str = vlc_keycode2str(code, true);
++    const QString result = qfu(str ? str : "");
++    free(str);
++    return result.isEmpty() ? vlcKey : result;
++}
++
+ void VLCSettings::resetAll()
+ {
+     config_ResetAll();
+diff --git a/modules/gui/qt/dialogs/preferences/vlc_settings.hpp b/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
+index 79d09bb..7c75f5e 100644
+--- a/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
++++ b/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
+@@ -53,6 +53,15 @@ public:
+     // (empty if cancelled).
+     Q_INVOKABLE QString browse(const QString &name);
+ 
++    // Every hotkey action: [{ name: "key-...", text, value, globalValue }]
++    Q_INVOKABLE QVariantList hotkeys() const;
++
++    // VLC key text ("Ctrl+Space") for a Qt key press, empty for lone modifiers
++    Q_INVOKABLE QString keyFromEvent(int key, int modifiers, const QString &text) const;
++
++    // Localized label for a VLC key text, empty when unset
++    Q_INVOKABLE QString keyLabel(const QString &vlcKey) const;
++
+     Q_INVOKABLE void resetAll();
+     Q_INVOKABLE void openConfigFolder() const;
+ 
+diff --git a/modules/gui/qt/maininterface/qml/MainInterface.qml b/modules/gui/qt/maininterface/qml/MainInterface.qml
+index 1b5101e..c7f135b 100644
+--- a/modules/gui/qt/maininterface/qml/MainInterface.qml
++++ b/modules/gui/qt/maininterface/qml/MainInterface.qml
+@@ -364,6 +364,39 @@ Item {
+             }
+         }
+ 
++        // Juxtopposed: the keyboard shortcuts dialog, above the settings
++        // window it is usually opened from
++        Loader {
++            id: hotkeysLoader
++
++            anchors.fill: parent
++            z: 11
++
++            active: false
++            focus: active
++            source: "qrc:///qt/qml/VLC/Dialogs/HotkeysWindow.qml"
++
++            Connections {
++                target: DialogsProvider
++                function onHotkeysRequested() {
++                    hotkeysLoader.active = true
++                    hotkeysLoader.forceActiveFocus()
++                }
++            }
++
++            Connections {
++                target: hotkeysLoader.item
++                ignoreUnknownSignals: true
++                function onClosed() {
++                    hotkeysLoader.active = false
++                    if (settingsLoader.active)
++                        settingsLoader.forceActiveFocus()
++                    else
++                        viewLoader.forceActiveFocus()
++                }
++            }
++        }
++
+         Loader {
+             active: {
+                 const windowVisibility = MainCtx.intfMainWindow.visibility
+diff --git a/modules/gui/qt/menus/menus.cpp b/modules/gui/qt/menus/menus.cpp
+index a86e13b..e851675 100644
+--- a/modules/gui/qt/menus/menus.cpp
++++ b/modules/gui/qt/menus/menus.cpp
+@@ -271,6 +271,10 @@ void VLCMenuBar::ToolsMenu( qt_intf_t *p_intf, QMenu *menu )
+         addDPStaticEntry( menu, qtr( "Customi&ze Interface..." ),
+             ":/menu/preferences.svg", &DialogsProvider::showToolbarEditorDialog);
+ 
++    // Juxtopposed: the keyboard shortcuts get their own dialog
++    addDPStaticEntry( menu, qtr( "&Keyboard Shortcuts" ),
++        NULL, &DialogsProvider::hotkeysDialog );
++
+     addDPStaticEntry( menu, qtr( "&Preferences" ),
+         ":/menu/preferences.svg", &DialogsProvider::prefsDialog, "Ctrl+P", QAction::PreferencesRole );
+ }
+diff --git a/modules/gui/qt/meson.build b/modules/gui/qt/meson.build
+index 52ff1f4..33f57f8 100644
+--- a/modules/gui/qt/meson.build
++++ b/modules/gui/qt/meson.build
+@@ -617,6 +617,7 @@ qml_modules += {
+         'dialogs/dialogs/qml/ModalDialog.qml',
+         'dialogs/dialogs/qml/SettingsPages.qml',
+         'dialogs/dialogs/qml/SettingsRow.qml',
++        'dialogs/dialogs/qml/HotkeysWindow.qml',
+         'dialogs/dialogs/qml/SettingsWindow.qml',
+         'dialogs/dialogs/qml/WindowDialog.qml',
+         'dialogs/toolbar/qml/EditorDNDDelegate.qml',
+diff --git a/modules/gui/qt/pixmaps/VLCIcons.json b/modules/gui/qt/pixmaps/VLCIcons.json
+index 8fa0f30..4f76ee8 100644
+--- a/modules/gui/qt/pixmaps/VLCIcons.json
++++ b/modules/gui/qt/pixmaps/VLCIcons.json
+@@ -109,6 +109,7 @@
+         {"key":"interface_cursor", "path": "./icons/juxt/interface_cursor.svg"},
+         {"key":"privacy", "path": "./icons/juxt/privacy.svg"},
+         {"key":"keyboard", "path": "./icons/juxt/keyboard.svg"},
+-        {"key":"plugins", "path": "./icons/juxt/plugins.svg"}
++        {"key":"plugins", "path": "./icons/juxt/plugins.svg"},
++        {"key":"edit", "path": "./icons/juxt/edit.svg"}
+     ]
+ }
+diff --git a/modules/gui/qt/pixmaps/VLCIcons.ttf b/modules/gui/qt/pixmaps/VLCIcons.ttf
+index dd72f8db481e2ce512e785edfed6b3cbce9afaa8..7ade063c8acca17c5eeee5f7db76e3cf3e9958b2 100644
+GIT binary patch
+delta 598
+zcmYk3O=uHQ5P;{sx4X@cb!9h+N+YIe8}TR2k7*RE28l#4)--8oy!f-k*sX2sVwNSI
+z(u-J%x5b0@BzjSbi3G$$FBQQ<FA6OLloIeDtx|G`2SKcp;=u>=hHqxx{JmP0G-{**
+z1OP;s1qNCoksW#cVr3a1cM`4c)L0<g`owYoq>OwcUsSa3w$=s!eT(AC8@dO)bPj;~
+zh<<KDDQVl=m<e)0WXr_#y;~_cwgA8{0wg19LAe<^<bQ*{-zZU4EmRZ><2Wo3K|{Y<
+z)XT?@`Q9Tpkk_YY^2)Nj*2dhc$c>^>)?kU9L;n?I&mE;$X!&A!fYBy4WYcC!`XzTd
+z4v_hQZ_XQ7k$)v&{#+L0`wh&0${M_k+!<&ch!+)Z;PJ-3)OGRnPq1Swo^MQl@K4W~
+z9&(0Enb*iwGHEW6UxDgQ2u|6V6x=%-1hNOIvr9K{fDPl#b+|ccHtAP#yZ(-K5%UB0
+znGQUuKj)ubtT3p;JWDbI?9c~;00X^YmqY05_4*=F2p=Rahe!pH2)+|%StuH#dqo<f
+z(E#z0qZGPjx%&_7mL!rKc4VDSqs?0u-2N_Rk#;emZTO8X@9dVr^I3jH?vbP(nZ9&n
+zoWssiOQ2!vkpr^Ldm(5QTKZsV^ZwyYo#!%qJwB=uGGs2M19*Q)Kf<~1W>zVgswc+c
+b%-Z=;O$`Ny%!lLq?f>oQS#6wfFc0t-rW1{4
+
+delta 430
+zcmcbyfpNon#(D-u1_lOxh6V;^h5|RY5Z{eU{4X;wgiQg8%J>KC8-2LQ9LB)FSOMfG
+zB<Cg;yc2z!&%nU61&BqG%Ssd&l$bgg7+6jK<yq1biwpk$2b#nX)&t~oq~}zoJ>n}Z
+zWnf@k!oc9QAR{#~#ZYl0NbMgWHp|FJtxx1&W?=zZU;-3S$;d6KFsfBM0_5KS^6%v2
+zCnp{h-Vg;e`wWnOEjO{EfMGYYBTzm9$XCcq%uW5EW*^VM5a0rI5LZEdamn(pRfiZD
+zf&zegEX#m4vaS;Xnjf|SWPTaYe9L+RKOp}K$b1GyB_IV1fgM{G2*vZ;d}ZJUss)1Q
+z4BI9^>4}pS7;PD|CdV<xGG<KP!}wF10pvq4mH~$z10x@h2MR|S1{Q`-K$-;zf&2#<
+zlb<j>-h7gojdAitmYYlr44c=mF7(>`Fd&VQ(Ri{)kUo&C2$~8soiF&x<|o0<%pj8|
+P8-z=8BRODkNH`+^C^&9H
+
+diff --git a/modules/gui/qt/pixmaps/icons/juxt/edit.svg b/modules/gui/qt/pixmaps/icons/juxt/edit.svg
+new file mode 100644
+index 0000000..5586f43
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/icons/juxt/edit.svg
+@@ -0,0 +1,25 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++<svg
++   width="24"
++   height="24"
++   viewBox="0 0 24 24"
++   version="1.1"
++   id="svg2"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg">
++  <defs
++     id="defs2" />
++  <g
++     transform="translate(0.0 0.0)"
++     fill="none"
++     id="g2">
++    <path
++       style="fill:#000000;stroke-linecap:round;stroke-linejoin:round"
++       d="M 7,19.25 A 0.75,0.75 0 0 0 6.25,20 0.75,0.75 0 0 0 7,20.75 H 19 A 0.75,0.75 0 0 0 19.75,20 0.75,0.75 0 0 0 19,19.25 Z"
++       id="path1" />
++    <path
++       style="fill:#000000;stroke-linejoin:round"
++       d="m 15.121094,3.2519531 c -0.426735,4.9e-6 -0.855027,0.1594943 -1.179688,0.4785157 L 11.1875,6.4394531 5.4609375,12.070313 a 0.750075,0.750075 0 0 0 -0.2011719,0.349609 l -0.9726562,3.832031 c -0.2243227,0.886416 0.6842369,1.714966 1.5449218,1.439453 l 3.6445313,-1.166015 a 0.750075,0.750075 0 0 0 0.296875,-0.179688 l 5.7285155,-5.630859 2.753906,-2.7070315 c 0.648925,-0.6383822 0.649198,-1.7150961 0,-2.3535156 L 16.298828,3.7304688 C 15.974175,3.4113029 15.547829,3.2519482 15.121094,3.2519531 Z m -0.126953,1.5488281 c 0.07148,-0.070237 0.180659,-0.070088 0.251953,0 l 1.957031,1.9238282 c 0.0712,0.07002 0.07128,0.1427728 0,0.2128906 L 14.449219,9.6464844 8.8496094,15.152344 5.8710937,16.105469 6.6621094,12.992188 12.240234,7.5078125 Z"
++       id="path2" />
++  </g>
++</svg>
+diff --git a/modules/gui/qt/style/vlcicons.hpp b/modules/gui/qt/style/vlcicons.hpp
+index 3a12c58..8a1c328 100644
+--- a/modules/gui/qt/style/vlcicons.hpp
++++ b/modules/gui/qt/style/vlcicons.hpp
+@@ -119,6 +119,7 @@ class VLCIcons : public QObject {
+     Q_PROPERTY(QChar privacy MEMBER privacy CONSTANT FINAL)
+     Q_PROPERTY(QChar keyboard MEMBER keyboard CONSTANT FINAL)
+     Q_PROPERTY(QChar plugins MEMBER plugins CONSTANT FINAL)
++    Q_PROPERTY(QChar edit MEMBER edit CONSTANT FINAL)
+ 
+ 
+ public:
+@@ -234,6 +235,7 @@ public:
+     static constexpr inline QChar privacy{ u'\ue066' };
+     static constexpr inline QChar keyboard{ u'\ue067' };
+     static constexpr inline QChar plugins{ u'\ue068' };
++    static constexpr inline QChar edit{ u'\ue069' };
+ 
+ };
+ 
+-- 
+2.45.0.windows.1
+

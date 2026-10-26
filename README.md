@@ -63,9 +63,11 @@ in-player quick settings sidebar (Playback, Video, Audio and Subtitles tabs
 with live speed, delay, track, zoom, crop and deinterlacing controls),
 keyboard shortcuts dialog (grouped hotkeys and global hotkeys, search by
 field, press-a-key editing that frees conflicting keys, Save/Cancel; opened
-from Settings > Controls or Tools > Keyboard Shortcuts, applies after restart).
+from Settings > Controls or Tools > Keyboard Shortcuts, applies after restart),
+menu styling (main, player and library menus as a rounded dark card with 48px
+rows, muted text, dim separators and chevrons).
 
 Not yet: library browsing inside the player side panel, settings extras
 (accent color, interface language, equalizer board, extensions list),
-subtitle presets and timeline, onboarding,
-dialogs, context menus, light theme, library icons.
+subtitle presets and timeline, onboarding, the design's menu entries and
+orange menu icons, dialogs, light theme, library icons.
