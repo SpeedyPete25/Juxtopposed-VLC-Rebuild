@@ -65,9 +65,12 @@ keyboard shortcuts dialog (grouped hotkeys and global hotkeys, search by
 field, press-a-key editing that frees conflicting keys, Save/Cancel; opened
 from Settings > Controls or Tools > Keyboard Shortcuts, applies after restart),
 menu styling (main, player and library menus as a rounded dark card with 48px
-rows, muted text, dim separators and chevrons).
+rows, muted text, dim separators and chevrons), player right-click menu laid
+out as in the design (playback entries with their current hotkeys, Hide UI,
+Playback/Video/Audio/Subtitle, More Settings, Playlist, Open Media, Quit VLC)
+with the two-tone orange menu icons.
 
 Not yet: library browsing inside the player side panel, settings extras
 (accent color, interface language, equalizer board, extensions list),
-subtitle presets and timeline, onboarding, the design's menu entries and
-orange menu icons, dialogs, light theme, library icons.
+subtitle presets and timeline, onboarding, library context menu entries and
+icons, dialogs, light theme, library icons.
