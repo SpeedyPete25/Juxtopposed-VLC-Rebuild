@@ -1,0 +1,613 @@
+From bba6e2c6996e01fc35f12ec6a460e75f8f8b6d29 Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Tue, 27 Oct 2026 21:46:20 +1030
+Subject: [PATCH] qt: Juxtopposed player right-click menu
+
+Rebuilds the player right-click menu as in the redesign: Play or Pause, Stop, Previous Item, Next Item and Record with their current hotkeys shown, Hide UI for the minimal view, the Playback, Video, Audio and Subtitle submenus (greyed out without media), then More Settings (the Tools menu), a Playlist submenu for the play queue, Open Media and Quit VLC. Every entry uses the two-tone orange menu icons exported from the Figma file. The skins interface keeps VLC's original layout.
+---
+ modules/gui/qt/Makefile.am                    |  15 +
+ modules/gui/qt/assets.qrc                     |  15 +
+ modules/gui/qt/menus/menus.cpp                | 260 +++++++++++-------
+ modules/gui/qt/pixmaps/menu/juxt_audio.svg    |   9 +
+ modules/gui/qt/pixmaps/menu/juxt_hide_ui.svg  |   6 +
+ modules/gui/qt/pixmaps/menu/juxt_next.svg     |   6 +
+ modules/gui/qt/pixmaps/menu/juxt_open.svg     |   6 +
+ modules/gui/qt/pixmaps/menu/juxt_pause.svg    |   3 +
+ modules/gui/qt/pixmaps/menu/juxt_play.svg     |   5 +
+ modules/gui/qt/pixmaps/menu/juxt_playback.svg |   6 +
+ modules/gui/qt/pixmaps/menu/juxt_playlist.svg |   8 +
+ modules/gui/qt/pixmaps/menu/juxt_previous.svg |   6 +
+ modules/gui/qt/pixmaps/menu/juxt_quit.svg     |   6 +
+ modules/gui/qt/pixmaps/menu/juxt_record.svg   |   6 +
+ modules/gui/qt/pixmaps/menu/juxt_settings.svg |   6 +
+ modules/gui/qt/pixmaps/menu/juxt_stop.svg     |   5 +
+ modules/gui/qt/pixmaps/menu/juxt_subtitle.svg |   7 +
+ modules/gui/qt/pixmaps/menu/juxt_video.svg    |   6 +
+ 18 files changed, 282 insertions(+), 99 deletions(-)
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_audio.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_hide_ui.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_next.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_open.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_pause.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_play.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_playback.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_playlist.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_previous.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_quit.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_record.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_settings.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_stop.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_subtitle.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_video.svg
+
+diff --git a/modules/gui/qt/Makefile.am b/modules/gui/qt/Makefile.am
+index 213e4a4..f477712 100644
+--- a/modules/gui/qt/Makefile.am
++++ b/modules/gui/qt/Makefile.am
+@@ -910,6 +910,21 @@ libqt_plugin_la_RES = \
+ 	pixmaps/menu/ic_fluent_arrow_eject.svg \
+ 	pixmaps/menu/exit.svg \
+ 	pixmaps/menu/juxt_chevron_right.svg \
++	pixmaps/menu/juxt_audio.svg \
++	pixmaps/menu/juxt_hide_ui.svg \
++	pixmaps/menu/juxt_next.svg \
++	pixmaps/menu/juxt_open.svg \
++	pixmaps/menu/juxt_pause.svg \
++	pixmaps/menu/juxt_play.svg \
++	pixmaps/menu/juxt_playback.svg \
++	pixmaps/menu/juxt_playlist.svg \
++	pixmaps/menu/juxt_previous.svg \
++	pixmaps/menu/juxt_quit.svg \
++	pixmaps/menu/juxt_record.svg \
++	pixmaps/menu/juxt_settings.svg \
++	pixmaps/menu/juxt_stop.svg \
++	pixmaps/menu/juxt_subtitle.svg \
++	pixmaps/menu/juxt_video.svg \
+ 	pixmaps/menu/ic_fluent_fast_forward.svg \
+ 	pixmaps/menu/file.svg \
+ 	pixmaps/menu/folder.svg \
+diff --git a/modules/gui/qt/assets.qrc b/modules/gui/qt/assets.qrc
+index b501956..cd29741 100644
+--- a/modules/gui/qt/assets.qrc
++++ b/modules/gui/qt/assets.qrc
+@@ -24,6 +24,21 @@
+         <file alias="ic_fluent_arrow_eject.svg">pixmaps/menu/ic_fluent_arrow_eject.svg</file>
+         <file alias="exit.svg">pixmaps/menu/exit.svg</file>
+         <file alias="juxt_chevron_right.svg">pixmaps/menu/juxt_chevron_right.svg</file>
++        <file alias="juxt_audio.svg">pixmaps/menu/juxt_audio.svg</file>
++        <file alias="juxt_hide_ui.svg">pixmaps/menu/juxt_hide_ui.svg</file>
++        <file alias="juxt_next.svg">pixmaps/menu/juxt_next.svg</file>
++        <file alias="juxt_open.svg">pixmaps/menu/juxt_open.svg</file>
++        <file alias="juxt_pause.svg">pixmaps/menu/juxt_pause.svg</file>
++        <file alias="juxt_play.svg">pixmaps/menu/juxt_play.svg</file>
++        <file alias="juxt_playback.svg">pixmaps/menu/juxt_playback.svg</file>
++        <file alias="juxt_playlist.svg">pixmaps/menu/juxt_playlist.svg</file>
++        <file alias="juxt_previous.svg">pixmaps/menu/juxt_previous.svg</file>
++        <file alias="juxt_quit.svg">pixmaps/menu/juxt_quit.svg</file>
++        <file alias="juxt_record.svg">pixmaps/menu/juxt_record.svg</file>
++        <file alias="juxt_settings.svg">pixmaps/menu/juxt_settings.svg</file>
++        <file alias="juxt_stop.svg">pixmaps/menu/juxt_stop.svg</file>
++        <file alias="juxt_subtitle.svg">pixmaps/menu/juxt_subtitle.svg</file>
++        <file alias="juxt_video.svg">pixmaps/menu/juxt_video.svg</file>
+         <file alias="ic_fluent_fast_forward.svg">pixmaps/menu/ic_fluent_fast_forward.svg</file>
+         <file alias="file.svg">pixmaps/menu/file.svg</file>
+         <file alias="folder.svg">pixmaps/menu/folder.svg</file>
+diff --git a/modules/gui/qt/menus/menus.cpp b/modules/gui/qt/menus/menus.cpp
+index e851675..f46da6f 100644
+--- a/modules/gui/qt/menus/menus.cpp
++++ b/modules/gui/qt/menus/menus.cpp
+@@ -34,6 +34,7 @@
+ #include <vlc_intf_strings.h>
+ #include <vlc_aout.h>                             /* audio_output_t */
+ #include <vlc_interface.h>
++#include <vlc_actions.h>
+ 
+ #include "menus.hpp"
+ 
+@@ -154,6 +155,32 @@ static QAction* addMPLStaticEntry( qt_intf_t *p_intf,
+     return action;
+ }
+ 
++/* Juxtopposed: the two-tone (orange and gray) menu icons of the redesign */
++static QIcon juxtIcon( const char *name )
++{
++    return QIcon( QStringLiteral( ":/menu/juxt_%1.svg" ).arg( QLatin1String( name ) ) );
++}
++
++/* Juxtopposed: show the action's current VLC hotkey on the right of the entry */
++static void setHotkeyHint( QAction *action, const char *hotkey )
++{
++    char *value = config_GetPsz( hotkey );
++    if( !value )
++        return;
++    const QString first = qfu( value ).split( '\t' ).value( 0 );
++    free( value );
++
++    const uint_fast32_t code = vlc_str2keycode( qtu( first ) );
++    if( first.isEmpty() || code == KEY_UNSET )
++        return;
++    char *text = vlc_keycode2str( code, false );
++    if( text )
++    {
++        action->setShortcut( QKeySequence::fromString( qfu( text ) ) );
++        free( text );
++    }
++}
++
+ /*****************************************************************************
+  * All normal menus
+  * Simple Code
+@@ -593,35 +620,50 @@ void VLCMenuBar::PopupMenuPlaylistEntries( QMenu *menu, qt_intf_t *p_intf )
+                 THEMPL->togglePlayPause();
+         });
+ #ifndef __APPLE__ /* No icons in menus in Mac */
+-        action->setIcon( ColorizedSvgIcon::colorizedIconForWidget( QStringLiteral(":/menu/ic_fluent_play_filled.svg"), menu ) );
++        action->setIcon( juxtIcon( "play" ) );
+ #endif
+     }
+     else
+     {
+-        action = addMPLStaticEntry( p_intf, menu, qtr( "Pause" ),
+-                ":/menu/ic_pause_filled.svg", &PlaylistController::togglePlayPause );
++        action = menu->addAction( qtr( "Pause" ), THEMPL, &PlaylistController::togglePlayPause );
++#ifndef __APPLE__
++        action->setIcon( juxtIcon( "pause" ) );
++#endif
+     }
++    setHotkeyHint( action, "key-play-pause" );
+ 
+     /* Stop */
+-    action = addMPLStaticEntry( p_intf, menu, qtr( "&Stop" ),
+-            ":/menu/ic_fluent_stop.svg", &PlaylistController::stop );
++    action = menu->addAction( qtr( "&Stop" ), THEMPL, &PlaylistController::stop );
++#ifndef __APPLE__
++    action->setIcon( juxtIcon( "stop" ) );
++#endif
++    setHotkeyHint( action, "key-stop" );
+     if( !hasInput )
+         action->setEnabled( false );
+ 
+     /* Next / Previous */
+     bool bPlaylistEmpty = THEMPL->isEmpty();
+-    QAction* previousAction = addMPLStaticEntry( p_intf, menu, qtr( "Pre&vious" ),
+-            ":/menu/ic_fluent_previous.svg", &PlaylistController::prev );
++    QAction* previousAction = menu->addAction( qtr( "Previous Item" ), THEMPL, &PlaylistController::prev );
++#ifndef __APPLE__
++    previousAction->setIcon( juxtIcon( "previous" ) );
++#endif
++    setHotkeyHint( previousAction, "key-prev" );
+     previousAction->setEnabled( !bPlaylistEmpty );
+     connect( THEMPL, &PlaylistController::isEmptyChanged, previousAction, &QAction::setDisabled);
+ 
+-    QAction* nextAction = addMPLStaticEntry( p_intf, menu, qtr( "Ne&xt" ),
+-            ":/menu/ic_fluent_next.svg", &PlaylistController::next );
++    QAction* nextAction = menu->addAction( qtr( "Next Item" ), THEMPL, &PlaylistController::next );
++#ifndef __APPLE__
++    nextAction->setIcon( juxtIcon( "next" ) );
++#endif
++    setHotkeyHint( nextAction, "key-next" );
+     nextAction->setEnabled( !bPlaylistEmpty );
+     connect( THEMPL, &PlaylistController::isEmptyChanged, nextAction, &QAction::setDisabled);
+ 
+     action = menu->addAction( qtr( "Record" ), THEMIM, &PlayerController::toggleRecord );
+-    action->setIcon( QIcon( ":/menu/ic_fluent_record.svg" ) );
++#ifndef __APPLE__
++    action->setIcon( juxtIcon( "record" ) );
++#endif
++    setHotkeyHint( action, "key-record" );
+     if( !hasInput )
+         action->setEnabled( false );
+     menu->addSeparator();
+@@ -749,111 +791,79 @@ QMenu* VLCMenuBar::MiscPopupMenu( qt_intf_t *p_intf, bool show )
+ /* Main Menu that sticks everything together  */
+ QMenu* VLCMenuBar::PopupMenu( qt_intf_t *p_intf, bool show )
+ {
+-    /* */
++    /* Juxtopposed: the player right-click menu of the redesign (Figma
++     * "right-click menu"): playback controls, Hide UI, the media submenus,
++     * then settings, play queue, open and quit. The skins interface keeps
++     * VLC's own layout below. */
+     QMenu* menu = new VLCMenu(p_intf);
+     input_item_t* p_input = THEMIM->getInput();
+     QAction *action;
+-    bool b_isFullscreen = false;
+ 
+     PopupMenuPlaylistEntries( menu, p_intf );
+-    menu->addSeparator();
+ 
+-    if( p_input )
++    if( !p_intf->b_isDialogProvider )
+     {
+-        QMenu *submenu;
+-        SharedVOutThread p_vout = THEMIM->getVout();
++        MainCtx *mi = p_intf->p_mi;
+ 
+-        /* Add a fullscreen switch button, since it is the most used function */
+-        if( p_vout )
+-        {
+-            menu->addAction(new BooleanPropertyAction(qtr( "&Fullscreen" ), THEMIM, "fullscreen", menu) );
+-            menu->addSeparator();
+-        }
+-
+-        /* Input menu */
+-
+-        /* Audio menu */
+-        submenu = new QMenu( menu );
+-        AudioMenu( p_intf, submenu );
+-        action = menu->addMenu( submenu );
+-        action->setText( qtr( "&Audio" ) );
+-        if( action->menu()->isEmpty() )
+-            action->setEnabled( false );
+-
+-        /* Video menu */
+-        submenu = new QMenu( menu );
+-        VideoMenu( p_intf, submenu );
+-        action = menu->addMenu( submenu );
+-        action->setText( qtr( "&Video" ) );
+-        if( action->menu()->isEmpty() )
+-            action->setEnabled( false );
+-
+-        /* Subtitles menu */
+-        submenu = new QMenu( menu );
+-        SubtitleMenu( p_intf, submenu, true );
+-        action = menu->addMenu( submenu );
+-        action->setText( qtr( "Subti&tle") );
+-
+-        /* Playback menu for chapters */
+-        submenu = new QMenu( menu );
+-        NavigMenu( p_intf, submenu );
+-        action = menu->addMenu( submenu );
+-        action->setText( qtr( "&Playback" ) );
+-        if( action->menu()->isEmpty() )
+-            action->setEnabled( false );
++        action = menu->addAction( qtr( "Hide UI" ) );
++#ifndef __APPLE__
++        action->setIcon( juxtIcon( "hide_ui" ) );
++#endif
++        action->setShortcut( QString( "Ctrl+H" ) );
++        action->setCheckable( true );
++        action->setChecked( mi->isMinimalView() );
++        connect( action, &QAction::triggered, mi, &MainCtx::setMinimalView );
++        menu->addSeparator();
+     }
+ 
++    /* Playback, Video, Audio and Subtitle, greyed out without media */
++    const auto addMediaMenu = [&]( const QString &text, const char *icon, auto fill ) {
++        QMenu *submenu = new QMenu( text, menu );
++        if( p_input )
++            fill( submenu );
++#ifndef __APPLE__
++        submenu->setIcon( juxtIcon( icon ) );
++#endif
++        QAction *entry = menu->addMenu( submenu );
++        entry->setEnabled( !submenu->isEmpty() );
++    };
++    addMediaMenu( qtr( "&Playback" ), "playback", [&]( QMenu *m ) { NavigMenu( p_intf, m ); } );
++    addMediaMenu( qtr( "&Video" ), "video", [&]( QMenu *m ) { VideoMenu( p_intf, m ); } );
++    addMediaMenu( qtr( "&Audio" ), "audio", [&]( QMenu *m ) { AudioMenu( p_intf, m ); } );
++    addMediaMenu( qtr( "Subti&tle" ), "subtitle", [&]( QMenu *m ) { SubtitleMenu( p_intf, m, true ); } );
++
+     menu->addSeparator();
+ 
+-    /* Add some special entries for windowed mode: Interface Menu */
+-    if( !b_isFullscreen )
++    if( p_intf->b_isDialogProvider )
+     {
+-        if( p_intf->b_isDialogProvider )
++        // same as Tool menu but with extra entries
++        QMenu* submenu = new QMenu( qtr( "Interface" ), menu );
++        ToolsMenu( p_intf, submenu );
++        submenu->addSeparator();
++
++        vlc_object_t* p_object = vlc_object_parent(p_intf->intf);
++
++        /* Open skin dialog box */
++        if (var_Type(p_object, "intf-skins-interactive") & VLC_VAR_ISCOMMAND)
+         {
+-            // same as Tool menu but with extra entries
+-            QMenu* submenu = new QMenu( qtr( "Interface" ), menu );
+-            ToolsMenu( p_intf, submenu );
+-            submenu->addSeparator();
+-
+-            vlc_object_t* p_object = vlc_object_parent(p_intf->intf);
+-
+-            /* Open skin dialog box */
+-            if (var_Type(p_object, "intf-skins-interactive") & VLC_VAR_ISCOMMAND)
+-            {
+-                QAction* openSkinAction = new QAction(qtr("Open skin..."), menu);
+-                openSkinAction->setShortcut( QKeySequence( "Ctrl+Shift+S" ));
+-                connect(openSkinAction, &QAction::triggered, [=]() {
+-                    var_TriggerCallback(p_object, "intf-skins-interactive");
+-                });
+-                submenu->addAction(openSkinAction);
+-            }
+-
+-            VLCVarChoiceModel* skinmodel = new VLCVarChoiceModel(p_object, "intf-skins", submenu);
+-            CheckableListMenu* skinsubmenu = new CheckableListMenu(qtr("Interface"), skinmodel, QActionGroup::ExclusionPolicy::ExclusiveOptional, submenu);
+-            submenu->addMenu(skinsubmenu);
+-
+-            submenu->addSeparator();
+-
+-            /* list of extensions */
+-            ExtensionsMenu( p_intf, submenu );
+-
+-            menu->addMenu( submenu );
++            QAction* openSkinAction = new QAction(qtr("Open skin..."), menu);
++            openSkinAction->setShortcut( QKeySequence( "Ctrl+Shift+S" ));
++            connect(openSkinAction, &QAction::triggered, [=]() {
++                var_TriggerCallback(p_object, "intf-skins-interactive");
++            });
++            submenu->addAction(openSkinAction);
+         }
+-        else
+-        {
+-            QMenu* toolsMenu = new QMenu( qtr( "Tool&s" ), menu );
+-            ToolsMenu( p_intf, toolsMenu );
+-            menu->addMenu( toolsMenu );
+ 
+-            QMenu* viewMenu = new QMenu( qtr( "V&iew" ), menu );
+-            ViewMenu( p_intf, viewMenu );
+-            menu->addMenu( viewMenu );
+-        }
+-    }
++        VLCVarChoiceModel* skinmodel = new VLCVarChoiceModel(p_object, "intf-skins", submenu);
++        CheckableListMenu* skinsubmenu = new CheckableListMenu(qtr("Interface"), skinmodel, QActionGroup::ExclusionPolicy::ExclusiveOptional, submenu);
++        submenu->addMenu(skinsubmenu);
+ 
+-    /* Static entries for ending, like open */
+-    if( p_intf->b_isDialogProvider )
+-    {
++        submenu->addSeparator();
++
++        /* list of extensions */
++        ExtensionsMenu( p_intf, submenu );
++
++        menu->addMenu( submenu );
+ 
+         QMenu* openmenu = new QMenu( qtr( "Open Media" ), menu );
+         FileMenu( p_intf, openmenu );
+@@ -869,7 +879,59 @@ QMenu* VLCMenuBar::PopupMenu( qt_intf_t *p_intf, bool show )
+                           &DialogsProvider::quit, "Ctrl+Q", QAction::QuitRole );
+     }
+     else
+-        PopupMenuStaticEntries( menu );
++    {
++        MainCtx *mi = p_intf->p_mi;
++
++        /* More Settings: the Tools menu (preferences, shortcuts, effects...) */
++        QMenu* toolsMenu = new QMenu( qtr( "More Settings" ), menu );
++        ToolsMenu( p_intf, toolsMenu );
++#ifndef __APPLE__
++        toolsMenu->setIcon( juxtIcon( "settings" ) );
++#endif
++        menu->addMenu( toolsMenu );
++
++        /* Playlist: the play queue panel and its modes */
++        QMenu* playlistMenu = new QMenu( qtr( "Playlist" ), menu );
++#ifndef __APPLE__
++        playlistMenu->setIcon( juxtIcon( "playlist" ) );
++#endif
++        action = playlistMenu->addAction( qtr( "Play &Queue" ) );
++        action->setShortcut( QString( "Ctrl+L" ) );
++        action->setCheckable( true );
++        action->setChecked( mi->getPlayqueuePanel()->isVisible() );
++        connect( action, &QAction::triggered, mi->getPlayqueuePanel(), &SidePanelCtx::setVisible );
++
++        action = playlistMenu->addAction( qtr( "Docked Play Queue" ) );
++        action->setCheckable( true );
++        action->setChecked( mi->getPlayqueuePanel()->isDocked() );
++        connect( action, &QAction::triggered, mi->getPlayqueuePanel(), &SidePanelCtx::setDocked );
++
++        playlistMenu->addSeparator();
++
++        action = playlistMenu->addAction( qtr( "Shuffle" ), THEMPL, &PlaylistController::toggleRandom );
++        action->setCheckable( true );
++        action->setChecked( THEMPL->isRandom() );
++
++        action = playlistMenu->addAction( qtr( "Clear the Queue" ), THEMPL, &PlaylistController::clear );
++        action->setEnabled( !THEMPL->isEmpty() );
++
++        menu->addMenu( playlistMenu );
++
++        /* Open Media: the Media menu */
++        QMenu* openmenu = new QMenu( qtr( "Open Media" ), menu );
++        FileMenu( p_intf, openmenu );
++#ifndef __APPLE__
++        openmenu->setIcon( juxtIcon( "open" ) );
++#endif
++        menu->addMenu( openmenu );
++
++        action = menu->addAction( qtr( "Quit VLC" ), THEDP, &DialogsProvider::quit );
++#ifndef __APPLE__
++        action->setIcon( juxtIcon( "quit" ) );
++#endif
++        action->setShortcut( QString( "Ctrl+Q" ) );
++        action->setMenuRole( QAction::QuitRole );
++    }
+ 
+     if( show )
+         menu->popup( QCursor::pos() );
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_audio.svg b/modules/gui/qt/pixmaps/menu/juxt_audio.svg
+new file mode 100644
+index 0000000..75fcd83
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_audio.svg
+@@ -0,0 +1,9 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M12 3V21" stroke="#8F8F8F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<path d="M16 6V18" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<path d="M20 9V15" stroke="#8F8F8F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<path d="M8 8V16" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<path d="M4 11V13" stroke="#8F8F8F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_hide_ui.svg b/modules/gui/qt/pixmaps/menu/juxt_hide_ui.svg
+new file mode 100644
+index 0000000..52110b2
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_hide_ui.svg
+@@ -0,0 +1,6 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M6 3.75H18C19.2426 3.75 20.25 4.75736 20.25 6V18C20.25 19.2426 19.2426 20.25 18 20.25H6C4.75736 20.25 3.75 19.2426 3.75 18V6C3.75 4.75736 4.75736 3.75 6 3.75Z" stroke="#8F8F8F" stroke-width="1.5"/>
++<path d="M8 8L16 16" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round"/>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_next.svg b/modules/gui/qt/pixmaps/menu/juxt_next.svg
+new file mode 100644
+index 0000000..ad7c9cf
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_next.svg
+@@ -0,0 +1,6 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M8 17V7L14 12L8 17Z" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<path d="M17 7V17" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_open.svg b/modules/gui/qt/pixmaps/menu/juxt_open.svg
+new file mode 100644
+index 0000000..9271fa4
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_open.svg
+@@ -0,0 +1,6 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M9 2.75H17C18.7949 2.75 20.25 4.20507 20.25 6V18C20.25 19.7949 18.7949 21.25 17 21.25H7C5.20507 21.25 3.75 19.7949 3.75 18V8C3.75 5.10051 6.10051 2.75 9 2.75Z" stroke="#8F8F8F" stroke-width="1.5" stroke-linejoin="round"/>
++<path d="M10 8V5.05263C10 4.47128 9.52872 4 8.94737 4C6.7673 4 5 5.7673 5 7.94737C5 8.52872 5.47128 9 6.05263 9H9C9.55228 9 10 8.55228 10 8Z" fill="#AB6314"/>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_pause.svg b/modules/gui/qt/pixmaps/menu/juxt_pause.svg
+new file mode 100644
+index 0000000..1a6f978
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_pause.svg
+@@ -0,0 +1,3 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<path d="M9 7V17M15 7V17" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_play.svg b/modules/gui/qt/pixmaps/menu/juxt_play.svg
+new file mode 100644
+index 0000000..fd21d0c
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_play.svg
+@@ -0,0 +1,5 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M8 16.9554V7.04464C8 6.21249 8.95708 5.7444 9.61394 6.25529L15.9851 11.2106C16.4999 11.611 16.4999 12.389 15.9851 12.7894L9.61394 17.7447C8.95708 18.2556 8 17.7875 8 16.9554Z" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_playback.svg b/modules/gui/qt/pixmaps/menu/juxt_playback.svg
+new file mode 100644
+index 0000000..4ce0048
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_playback.svg
+@@ -0,0 +1,6 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M9 17V7L15.5 12L9 17Z" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<path d="M6 16.9586V7.04144C6 4.5617 8.83757 3.15264 10.8132 4.65136L17.3494 9.60993C18.9319 10.8104 18.9319 13.1896 17.3494 14.3901L10.8132 19.3486C8.83758 20.8474 6 19.4383 6 16.9586Z" stroke="#8F8F8F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_playlist.svg b/modules/gui/qt/pixmaps/menu/juxt_playlist.svg
+new file mode 100644
+index 0000000..788cd51
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_playlist.svg
+@@ -0,0 +1,8 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M3 12H11.6478" stroke="#8F8F8F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<path d="M3 17H11.6478" stroke="#8F8F8F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<path d="M3 7H21" stroke="#8F8F8F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<path d="M17.1813 19V11L21.1813 15L17.1813 19Z" fill="#AB6314" stroke="#AB6314" stroke-linejoin="round"/>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_previous.svg b/modules/gui/qt/pixmaps/menu/juxt_previous.svg
+new file mode 100644
+index 0000000..458c69e
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_previous.svg
+@@ -0,0 +1,6 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M17 17V7L11 12L17 17Z" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<path d="M8 7V17" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_quit.svg b/modules/gui/qt/pixmaps/menu/juxt_quit.svg
+new file mode 100644
+index 0000000..e143df6
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_quit.svg
+@@ -0,0 +1,6 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M12 3H6C4.34315 3 3 4.34315 3 6V18C3 19.6569 4.34315 21 6 21H12" stroke="#8F8F8F" stroke-width="1.5" stroke-linecap="round"/>
++<path d="M16 17L21 12L16 7M21 12H9" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_record.svg b/modules/gui/qt/pixmaps/menu/juxt_record.svg
+new file mode 100644
+index 0000000..1c0bec2
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_record.svg
+@@ -0,0 +1,6 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<circle cx="12" cy="12" r="6.25" stroke="#AB6314" stroke-width="1.5"/>
++<circle cx="12" cy="12" r="2.25" fill="#AB6314" stroke="#AB6314" stroke-width="1.5"/>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_settings.svg b/modules/gui/qt/pixmaps/menu/juxt_settings.svg
+new file mode 100644
+index 0000000..4871156
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_settings.svg
+@@ -0,0 +1,6 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M11.5973 21H12.5038C13.3943 21 14.1162 20.2781 14.1162 19.3876C14.1162 18.8165 14.4183 18.288 14.9104 17.9983L15.879 17.428C16.3859 17.1294 17.0136 17.1242 17.5255 17.4142C18.3073 17.8572 19.2998 17.5912 19.7554 16.8168L20.1658 16.1193C20.6243 15.3399 20.3553 14.3359 19.5685 13.8901C19.0699 13.6076 18.7579 13.0825 18.748 12.5095L18.7295 11.4275C18.7195 10.8432 19.0298 10.3001 19.5383 10.0119C20.3138 9.57252 20.579 8.58292 20.127 7.81462L19.7165 7.11687C19.2544 6.33131 18.2476 6.06158 17.4546 6.51089C16.9527 6.79529 16.3395 6.80039 15.833 6.5244L14.844 5.98559C14.3329 5.70715 14.0149 5.17166 14.0149 4.58966C14.0149 3.71172 13.3032 3 12.4253 3H11.496C10.6055 3 9.88366 3.72188 9.88366 4.61236C9.88366 5.18346 9.58156 5.71195 9.08944 6.00173L8.12087 6.57207C7.61396 6.87056 6.98626 6.87579 6.47444 6.58577C5.69271 6.1428 4.70018 6.4087 4.24459 7.18314L3.83425 7.88066C3.37571 8.6601 3.64468 9.66404 4.43146 10.1099C4.93008 10.3924 5.24215 10.9175 5.25197 11.4905L5.27051 12.5723C5.28053 13.1568 4.97019 13.6999 4.46161 13.988C3.686 14.4273 3.42081 15.4169 3.8728 16.1853L4.26804 16.8571C4.73604 17.6527 5.76107 17.917 6.55541 17.447C7.07824 17.1376 7.72791 17.1369 8.25139 17.4452L9.19069 17.9983C9.68281 18.288 9.98492 18.8165 9.98492 19.3876C9.98492 20.2781 10.7068 21 11.5973 21Z" stroke="#8F8F8F" stroke-width="1.5"/>
++<circle cx="12" cy="12" r="2.25" stroke="#AB6314" stroke-width="1.5"/>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_stop.svg b/modules/gui/qt/pixmaps/menu/juxt_stop.svg
+new file mode 100644
+index 0000000..eb4853b
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_stop.svg
+@@ -0,0 +1,5 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M8 17V7H16V17H8Z" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_subtitle.svg b/modules/gui/qt/pixmaps/menu/juxt_subtitle.svg
+new file mode 100644
+index 0000000..d58b59f
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_subtitle.svg
+@@ -0,0 +1,7 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M5 13H13M15.5 13H19" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<path d="M5 16H8M14 16H19M11.5 16H10.5" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<rect x="1.75" y="4.75" width="20.5" height="14.5" rx="3.25" stroke="#8F8F8F" stroke-width="1.5" stroke-linejoin="round"/>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_video.svg b/modules/gui/qt/pixmaps/menu/juxt_video.svg
+new file mode 100644
+index 0000000..2be5c07
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_video.svg
+@@ -0,0 +1,6 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M15.2734 4L14.1807 6.79199H9.04102L9.99609 4H15.2734ZM19 4C20.1046 4 21 4.89543 21 6C21 6.2815 20.9409 6.54902 20.8359 6.79199H15.9707L17.0635 4H19ZM8.23438 4L7.2793 6.79199H3.16406C3.05911 6.54902 3 6.2815 3 6C3 4.89543 3.89543 4 5 4H8.23438Z" fill="#D37918"/>
++<path d="M20 9.25H4C3.86193 9.25 3.75 9.36193 3.75 9.5V17C3.75 18.2426 4.75736 19.25 6 19.25H18C19.2426 19.25 20.25 18.2426 20.25 17V9.5C20.25 9.36193 20.1381 9.25 20 9.25Z" stroke="#8F8F8F" stroke-width="1.5"/>
++</g>
++</svg>
+-- 
+2.45.0.windows.1
+
