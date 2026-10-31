@@ -70,10 +70,12 @@ out as in the design (playback entries with their current hotkeys, Hide UI,
 Playback/Video/Audio/Subtitle, More Settings, Playlist, Open Media, Quit VLC)
 with the two-tone orange menu icons, library item menu in the design's order
 and wording with its icons (Play, Mark as Watched, Favorites, Stream, Convert,
-Add to Queue, Add to Playlist, Show in File Explorer, Properties & Metadata).
+Add to Queue, Add to Playlist, Show in File Explorer, Properties & Metadata),
+library playlist menu (Play, Shuffle, Add to Queue) and orange icons on the
+playlist item, Browse and play queue menus.
 
 Not yet: library browsing inside the player side panel, settings extras
 (accent color, interface language, equalizer board, extensions list),
-subtitle presets and timeline, onboarding, playlist and folder context menus,
-Go to Source and Add Subtitle/Audio Tracks in the item menu, dialogs, light
-theme, library icons.
+subtitle presets and timeline, onboarding, menu entries VLC has no action for
+(Favorite and Export Playlist for playlists, Go to Source, Add/Edit Subtitle
+and Audio Tracks, Resync), dialogs, light theme, library icons.
