@@ -1,0 +1,571 @@
+From 1d65c172c7902a8e2ee192fb972ddd75f2262a70 Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Sun, 1 Nov 2026 22:04:30 +1030
+Subject: [PATCH] qt: Juxtopposed equalizer in the quick settings sidebar
+
+Adds the redesign's equalizer card to the Audio tab of the player's quick settings: an on/off switch, the preset list, then Preamp and the ten bands, each with a dB field over a -20 to +20 dB slider. Changes apply to the playing audio and are saved to the configuration like the classic Equalizer panel, through new VLCSettings equalizer methods.
+---
+ .../qt/dialogs/preferences/vlc_settings.cpp   | 150 ++++++++
+ .../qt/dialogs/preferences/vlc_settings.hpp   |  10 +
+ .../gui/qt/player/qml/QuickSettingsPanel.qml  | 343 +++++++++++++++++-
+ 3 files changed, 501 insertions(+), 2 deletions(-)
+
+diff --git a/modules/gui/qt/dialogs/preferences/vlc_settings.cpp b/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
+index d25e126..7e2f766 100644
+--- a/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
++++ b/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
+@@ -24,10 +24,13 @@
+ 
+ #include "dialogs/preferences/vlc_settings.hpp"
+ #include "util/vlchotkeyconverter.hpp"
++#include "player/player_controller.hpp"
++#include "../../../../audio_filter/equalizer_presets.h"
+ 
+ #include <QDesktopServices>
+ #include <QKeyEvent>
+ #include <QDir>
++#include <QLocale>
+ #include <QFileDialog>
+ #include <QUrl>
+ 
+@@ -287,6 +290,153 @@ QVariantList VLCSettings::hotkeys() const
+     return result;
+ }
+ 
++// Juxtopposed: the equalizer of the quick settings sidebar, doing what the
++// classic Equalizer panel does: the playing audio output's variables change
++// live and the configuration keeps the values for the next files.
++
++static QStringList equalizerBands(qt_intf_t *p_intf)
++{
++    QStringList bands;
++    const SharedAOut aout = p_intf->p_mainPlayerController->getAout();
++    char *value = nullptr;
++    if (aout && var_Type(aout.get(), "equalizer-bands") == VLC_VAR_STRING)
++        value = var_GetString(aout.get(), "equalizer-bands");
++    if (!value || !*value)
++    {
++        free(value);
++        value = config_GetPsz("equalizer-bands");
++    }
++    if (value)
++    {
++        bands = QString::fromUtf8(value).split(' ', Qt::SkipEmptyParts);
++        free(value);
++    }
++    while (bands.size() < EQZ_BANDS_MAX)
++        bands << QStringLiteral("0");
++    return bands.mid(0, EQZ_BANDS_MAX);
++}
++
++static bool equalizerInFilters(const char *filters)
++{
++    return filters && QString::fromUtf8(filters).split(':', Qt::SkipEmptyParts)
++                          .contains(QLatin1String("equalizer"));
++}
++
++QVariantMap VLCSettings::equalizer() const
++{
++    qt_intf_t *p_intf = m_intf;
++    const SharedAOut aout = p_intf->p_mainPlayerController->getAout();
++
++    char *filters = aout ? var_GetNonEmptyString(aout.get(), "audio-filter")
++                         : config_GetPsz("audio-filter");
++    const bool enabled = equalizerInFilters(filters);
++    free(filters);
++
++    double preamp = config_GetFloat("equalizer-preamp");
++    if (aout && var_Type(aout.get(), "equalizer-preamp") != 0)
++        preamp = var_GetFloat(aout.get(), "equalizer-preamp");
++
++    char *preset = aout && var_Type(aout.get(), "equalizer-preset") != 0
++                 ? var_GetString(aout.get(), "equalizer-preset")
++                 : config_GetPsz("equalizer-preset");
++
++    QVariantList bands;
++    for (const QString &band : equalizerBands(p_intf))
++        bands << QLocale::c().toDouble(band);
++
++    // VLC's own band frequencies, or the ISO ones (equalizer-vlcfreqs)
++    const QStringList labels = config_GetInt("equalizer-vlcfreqs")
++        ? QStringList{ qtr("60 Hz"), qtr("170 Hz"), qtr("310 Hz"), qtr("600 Hz"), qtr("1 KHz"),
++                       qtr("3 KHz"), qtr("6 KHz"), qtr("12 KHz"), qtr("14 KHz"), qtr("16 KHz") }
++        : QStringList{ qtr("31 Hz"), qtr("63 Hz"), qtr("125 Hz"), qtr("250 Hz"), qtr("500 Hz"),
++                       qtr("1 KHz"), qtr("2 KHz"), qtr("4 KHz"), qtr("8 KHz"), qtr("16 KHz") };
++
++    QVariantList presets;
++    for (int i = 0; i < NB_PRESETS; ++i)
++        presets << QVariantMap{ { QStringLiteral("value"), QString::fromUtf8(preset_list[i]) },
++                                { QStringLiteral("text"), qfut(preset_list_text[i]) } };
++
++    QVariantMap result{
++        { QStringLiteral("enabled"), enabled },
++        { QStringLiteral("preamp"), preamp },
++        { QStringLiteral("bands"), bands },
++        { QStringLiteral("labels"), labels },
++        { QStringLiteral("preset"), QString::fromUtf8(preset ? preset : "") },
++        { QStringLiteral("presets"), presets } };
++    free(preset);
++    return result;
++}
++
++void VLCSettings::setEqualizerEnabled(bool enabled)
++{
++    qt_intf_t *p_intf = m_intf;
++
++    char *filters = config_GetPsz("audio-filter");
++    QStringList list = QString::fromUtf8(filters ? filters : "").split(':', Qt::SkipEmptyParts);
++    free(filters);
++    list.removeAll(QStringLiteral("equalizer"));
++    if (enabled)
++        list << QStringLiteral("equalizer");
++    config_PutPsz("audio-filter", qtu(list.join(':')));
++
++    vlc_player_aout_EnableFilter(p_intf->p_player, "equalizer", enabled);
++    m_saveTimer.start();
++}
++
++void VLCSettings::setEqualizerPreamp(double dB)
++{
++    qt_intf_t *p_intf = m_intf;
++    if (const SharedAOut aout = p_intf->p_mainPlayerController->getAout())
++        var_SetFloat(aout.get(), "equalizer-preamp", dB);
++    config_PutFloat("equalizer-preamp", dB);
++    m_saveTimer.start();
++}
++
++void VLCSettings::setEqualizerBand(int index, double dB)
++{
++    if (index < 0 || index >= EQZ_BANDS_MAX)
++        return;
++
++    qt_intf_t *p_intf = m_intf;
++    QStringList bands = equalizerBands(p_intf);
++    bands[index] = QLocale::c().toString(dB);
++    const QByteArray value = bands.join(' ').toUtf8();
++
++    if (const SharedAOut aout = p_intf->p_mainPlayerController->getAout())
++        var_SetString(aout.get(), "equalizer-bands", value.constData());
++    config_PutPsz("equalizer-bands", value.constData());
++    m_saveTimer.start();
++}
++
++QVariantMap VLCSettings::applyEqualizerPreset(const QString &preset)
++{
++    qt_intf_t *p_intf = m_intf;
++
++    for (int i = 0; i < NB_PRESETS; ++i)
++    {
++        if (preset != QLatin1String(preset_list[i]))
++            continue;
++
++        QStringList bands;
++        for (int j = 0; j < eqz_preset_10b[i].i_band; ++j)
++            bands << QLocale::c().toString(eqz_preset_10b[i].f_amp[j]);
++        const QByteArray value = bands.join(' ').toUtf8();
++
++        if (const SharedAOut aout = p_intf->p_mainPlayerController->getAout())
++        {
++            var_SetFloat(aout.get(), "equalizer-preamp", eqz_preset_10b[i].f_preamp);
++            var_SetString(aout.get(), "equalizer-bands", value.constData());
++            var_SetString(aout.get(), "equalizer-preset", preset_list[i]);
++        }
++        config_PutFloat("equalizer-preamp", eqz_preset_10b[i].f_preamp);
++        config_PutPsz("equalizer-bands", value.constData());
++        config_PutPsz("equalizer-preset", preset_list[i]);
++        m_saveTimer.start();
++        break;
++    }
++    return equalizer();
++}
++
+ QString VLCSettings::keyFromEvent(int key, int modifiers, const QString &text) const
+ {
+     switch (key)
+diff --git a/modules/gui/qt/dialogs/preferences/vlc_settings.hpp b/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
+index 7c75f5e..3b7be9c 100644
+--- a/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
++++ b/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
+@@ -62,6 +62,16 @@ public:
+     // Localized label for a VLC key text, empty when unset
+     Q_INVOKABLE QString keyLabel(const QString &vlcKey) const;
+ 
++    // Equalizer of the playing audio (or of the next one, from the config):
++    // { enabled, preamp, bands: [10 dB values], labels: [10 band names],
++    //   preset, presets: [{ value, text }] }
++    Q_INVOKABLE QVariantMap equalizer() const;
++    Q_INVOKABLE void setEqualizerEnabled(bool enabled);
++    Q_INVOKABLE void setEqualizerPreamp(double dB);
++    Q_INVOKABLE void setEqualizerBand(int index, double dB);
++    // Applies a preset (preamp and bands) and returns the new equalizer()
++    Q_INVOKABLE QVariantMap applyEqualizerPreset(const QString &preset);
++
+     Q_INVOKABLE void resetAll();
+     Q_INVOKABLE void openConfigFolder() const;
+ 
+diff --git a/modules/gui/qt/player/qml/QuickSettingsPanel.qml b/modules/gui/qt/player/qml/QuickSettingsPanel.qml
+index 5e23d5d..0868e11 100644
+--- a/modules/gui/qt/player/qml/QuickSettingsPanel.qml
++++ b/modules/gui/qt/player/qml/QuickSettingsPanel.qml
+@@ -191,10 +191,10 @@ Rectangle {
+ 
+                 SectionTitle { text: qsTr("Effects"); Layout.topMargin: VLCStyle.dp(8, VLCStyle.scale) }
+ 
+-                SettingsRow { Layout.fillWidth: true; controlWidth: VLCStyle.dp(190, VLCStyle.scale); row: ({ option: "equalizer-preset", label: qsTr("Equalizer") }) }
++                EqualizerCard { Layout.fillWidth: true }
+ 
+                 MoreButton {
+-                    text: qsTr("Equalizer and audio effects")
++                    text: qsTr("More audio effects")
+                     onClicked: DialogsProvider.extendedDialog()
+                 }
+             }
+@@ -371,6 +371,345 @@ Rectangle {
+         }
+     }
+ 
++    // The equalizer as a card that opens into Preamp and the ten bands, each
++    // a dB field over a slider (Figma "Audio - Equalizer"), with an on/off
++    // switch and the presets on top
++    component EqualizerCard: ColumnLayout {
++        id: eqCard
++
++        property var eq: VLCSettings.equalizer()
++        property bool expanded: false
++
++        spacing: 0
++
++        ColorContext { id: eqTheme; colorSet: ColorContext.Window }
++        ColorContext { id: eqView; colorSet: ColorContext.View }
++        ColorContext { id: eqField; colorSet: ColorContext.Slider }
++
++        function applyPreset(preset) {
++            eq = VLCSettings.applyEqualizerPreset(preset)
++        }
++
++        // Header: name, on/off, open/close
++        Rectangle {
++            Layout.fillWidth: true
++            implicitHeight: VLCStyle.dp(48, VLCStyle.scale)
++
++            radius: VLCStyle.dp(6, VLCStyle.scale)
++            color: eqTheme.bg.secondary
++
++            TapHandler { onTapped: eqCard.expanded = !eqCard.expanded }
++
++            Accessible.role: Accessible.Button
++            Accessible.name: eqCard.expanded ? qsTr("Collapse equalizer") : qsTr("Expand equalizer")
++            Accessible.onPressAction: eqCard.expanded = !eqCard.expanded
++
++            T.Label {
++                anchors.left: parent.left
++                anchors.leftMargin: VLCStyle.dp(16, VLCStyle.scale)
++                anchors.verticalCenter: parent.verticalCenter
++                text: eqCard.expanded ? qsTr("Collapse Settings") : qsTr("Equalizer")
++                color: eqView.fg.primary
++                font.pixelSize: VLCStyle.fontSize_large
++            }
++
++            T.Switch {
++                id: eqSwitch
++
++                anchors.right: chevron.left
++                anchors.rightMargin: VLCStyle.dp(12, VLCStyle.scale)
++                anchors.verticalCenter: parent.verticalCenter
++
++                // the Templates switch does not size itself from its indicator
++                implicitWidth: indicator.implicitWidth
++                implicitHeight: indicator.implicitHeight
++
++                checked: eqCard.eq.enabled
++
++                Accessible.name: qsTr("Equalizer")
++
++                // react to the state itself: accessibility toggles do not emit toggled()
++                onCheckedChanged: {
++                    if (checked === eqCard.eq.enabled)
++                        return
++                    VLCSettings.setEqualizerEnabled(checked)
++                    eqCard.eq = Object.assign({}, eqCard.eq, { enabled: checked })
++                }
++
++                indicator: Rectangle {
++                    implicitWidth: VLCStyle.dp(36, VLCStyle.scale)
++                    implicitHeight: VLCStyle.dp(20, VLCStyle.scale)
++                    radius: height / 2
++                    color: eqSwitch.checked ? eqField.bg.secondary : eqField.bg.primary
++                    border.width: VLCStyle.border
++                    border.color: eqSwitch.checked ? eqTheme.accent : eqView.border
++
++                    Rectangle {
++                        x: eqSwitch.checked ? parent.width - width - VLCStyle.dp(4, VLCStyle.scale) : VLCStyle.dp(4, VLCStyle.scale)
++                        anchors.verticalCenter: parent.verticalCenter
++                        width: VLCStyle.dp(12, VLCStyle.scale)
++                        height: width
++                        radius: width / 2
++                        color: eqSwitch.checked ? eqTheme.accent : eqTheme.fg.secondary
++
++                        Behavior on x { NumberAnimation { duration: VLCStyle.duration_short } }
++                    }
++                }
++            }
++
++            Widgets.IconLabel {
++                id: chevron
++
++                anchors.right: parent.right
++                anchors.rightMargin: VLCStyle.dp(10, VLCStyle.scale)
++                anchors.verticalCenter: parent.verticalCenter
++
++                text: eqCard.expanded ? VLCIcons.chevron_up : VLCIcons.chevron_down
++                color: eqView.fg.primary
++                font.pixelSize: VLCStyle.icon_normal
++            }
++        }
++
++        ColumnLayout {
++            Layout.fillWidth: true
++            Layout.topMargin: VLCStyle.dp(12, VLCStyle.scale)
++
++            visible: eqCard.expanded
++            enabled: eqCard.eq.enabled
++            opacity: enabled ? 1.0 : 0.5
++            spacing: VLCStyle.dp(10, VLCStyle.scale)
++
++            T.ComboBox {
++                id: presetBox
++
++                Layout.fillWidth: true
++                implicitHeight: VLCStyle.dp(36, VLCStyle.scale)
++
++                model: eqCard.eq.presets
++                textRole: "text"
++                valueRole: "value"
++                currentIndex: eqCard.eq.presets.findIndex((p) => p.value === eqCard.eq.preset)
++                displayText: currentIndex >= 0 ? currentText : qsTr("Custom")
++
++                Accessible.name: qsTr("Equalizer preset")
++
++                onActivated: (index) => eqCard.applyPreset(eqCard.eq.presets[index].value)
++
++                background: Rectangle {
++                    radius: VLCStyle.dp(4, VLCStyle.scale)
++                    color: eqField.bg.primary
++                }
++
++                contentItem: T.Label {
++                    leftPadding: VLCStyle.dp(14, VLCStyle.scale)
++                    rightPadding: VLCStyle.dp(40, VLCStyle.scale)
++                    verticalAlignment: Text.AlignVCenter
++                    text: presetBox.displayText
++                    color: eqView.fg.primary
++                    font.pixelSize: VLCStyle.fontSize_large
++                    elide: Text.ElideRight
++                }
++
++                indicator: Widgets.IconLabel {
++                    x: presetBox.width - width - VLCStyle.dp(12, VLCStyle.scale)
++                    anchors.verticalCenter: parent.verticalCenter
++                    text: VLCIcons.chevron_down
++                    color: eqView.fg.primary
++                    font.pixelSize: VLCStyle.icon_normal
++                }
++
++                delegate: T.ItemDelegate {
++                    required property var modelData
++                    required property int index
++
++                    width: presetBox.width - 2 * VLCStyle.dp(4, VLCStyle.scale)
++                    implicitHeight: VLCStyle.dp(32, VLCStyle.scale)
++
++                    highlighted: presetBox.highlightedIndex === index
++
++                    background: Rectangle {
++                        radius: VLCStyle.dp(3, VLCStyle.scale)
++                        color: (parent.highlighted || parent.hovered) ? eqView.border : "transparent"
++                    }
++
++                    contentItem: T.Label {
++                        leftPadding: VLCStyle.dp(10, VLCStyle.scale)
++                        verticalAlignment: Text.AlignVCenter
++                        text: modelData.text
++                        color: index === presetBox.currentIndex ? eqTheme.accent : eqView.fg.primary
++                        font.pixelSize: VLCStyle.fontSize_large
++                    }
++                }
++
++                popup: T.Popup {
++                    y: presetBox.height + VLCStyle.dp(4, VLCStyle.scale)
++                    width: presetBox.width
++                    implicitHeight: Math.min(contentItem.implicitHeight + 2 * padding, VLCStyle.dp(320, VLCStyle.scale))
++                    padding: VLCStyle.dp(4, VLCStyle.scale)
++
++                    contentItem: ListView {
++                        clip: true
++                        implicitHeight: contentHeight
++                        model: presetBox.popup.visible ? presetBox.delegateModel : null
++                        currentIndex: presetBox.highlightedIndex
++                        boundsBehavior: Flickable.StopAtBounds
++                    }
++
++                    background: Rectangle {
++                        radius: VLCStyle.dp(6, VLCStyle.scale)
++                        color: eqTheme.bg.secondary
++                        border.width: VLCStyle.border
++                        border.color: eqView.border
++                    }
++                }
++            }
++
++            BandSlider {
++                Layout.fillWidth: true
++                label: qsTr("Preamp")
++                value: eqCard.eq.preamp
++                onMoved: (dB) => VLCSettings.setEqualizerPreamp(dB)
++            }
++
++            Repeater {
++                model: eqCard.eq.bands.length
++
++                BandSlider {
++                    required property int index
++
++                    Layout.fillWidth: true
++                    label: eqCard.eq.labels[index]
++                    value: eqCard.eq.bands[index]
++                    onMoved: (dB) => VLCSettings.setEqualizerBand(index, dB)
++                }
++            }
++        }
++    }
++
++    // One equalizer row: name and dB field, then a -20 to +20 dB slider
++    component BandSlider: ColumnLayout {
++        id: band
++
++        property string label
++        property real value: 0
++        signal moved(real dB)
++
++        spacing: VLCStyle.dp(6, VLCStyle.scale)
++
++        ColorContext { id: bsTheme; colorSet: ColorContext.Window }
++        ColorContext { id: bsField; colorSet: ColorContext.Slider }
++        ColorContext { id: bsView; colorSet: ColorContext.View }
++
++        function set(dB) {
++            const v = Math.round(Math.max(-20, Math.min(20, dB)) * 10) / 10
++            value = v
++            moved(v)
++        }
++
++        RowLayout {
++            Layout.fillWidth: true
++
++            T.Label {
++                Layout.fillWidth: true
++                text: band.label
++                color: bsView.fg.primary
++                font.pixelSize: VLCStyle.fontSize_large
++            }
++
++            Rectangle {
++                implicitWidth: VLCStyle.dp(140, VLCStyle.scale)
++                implicitHeight: VLCStyle.dp(36, VLCStyle.scale)
++                radius: VLCStyle.dp(4, VLCStyle.scale)
++                color: bsField.bg.primary
++                border.width: dbInput.activeFocus ? VLCStyle.border : 0
++                border.color: bsTheme.accent
++
++                TextInput {
++                    id: dbInput
++
++                    anchors.fill: parent
++                    anchors.leftMargin: VLCStyle.dp(14, VLCStyle.scale)
++                    anchors.rightMargin: VLCStyle.dp(40, VLCStyle.scale)
++                    verticalAlignment: TextInput.AlignVCenter
++                    selectByMouse: true
++                    clip: true
++
++                    text: band.value.toFixed(1)
++                    color: bsView.fg.primary
++                    font.pixelSize: VLCStyle.fontSize_normal
++                    validator: DoubleValidator { bottom: -20; top: 20; decimals: 1; locale: "C" }
++
++                    Accessible.name: band.label
++
++                    onEditingFinished: {
++                        const dB = parseFloat(text)
++                        if (!isNaN(dB))
++                            band.set(dB)
++                        text = Qt.binding(() => band.value.toFixed(1))
++                    }
++                }
++
++                T.Label {
++                    anchors.right: parent.right
++                    anchors.rightMargin: VLCStyle.dp(14, VLCStyle.scale)
++                    anchors.verticalCenter: parent.verticalCenter
++                    text: qsTr("dB")
++                    color: bsTheme.fg.secondary
++                    font.pixelSize: VLCStyle.fontSize_normal
++                }
++            }
++        }
++
++        T.Slider {
++            id: bandSlider
++
++            Layout.fillWidth: true
++            implicitHeight: VLCStyle.dp(24, VLCStyle.scale)
++
++            from: -20
++            to: 20
++            stepSize: 0.1
++            value: band.value
++            live: true
++
++            onMoved: band.set(value)
++
++            background: Rectangle {
++                x: bandSlider.leftPadding
++                y: bandSlider.topPadding + (bandSlider.availableHeight - height) / 2
++                width: bandSlider.availableWidth
++                height: VLCStyle.dp(12, VLCStyle.scale)
++                radius: VLCStyle.dp(3, VLCStyle.scale)
++                color: bsField.bg.primary
++
++                // filled up to the handle
++                Rectangle {
++                    width: bandSlider.visualPosition * parent.width
++                    height: parent.height
++                    radius: parent.radius
++                    color: bsField.bg.secondary
++                }
++
++                // 0 dB mark
++                Rectangle {
++                    anchors.centerIn: parent
++                    width: VLCStyle.dp(2, VLCStyle.scale)
++                    height: parent.height
++                    color: bsView.border
++                }
++            }
++
++            handle: Rectangle {
++                x: bandSlider.leftPadding + bandSlider.visualPosition * (bandSlider.availableWidth - width)
++                y: bandSlider.topPadding + (bandSlider.availableHeight - height) / 2
++                width: VLCStyle.dp(8, VLCStyle.scale)
++                height: VLCStyle.dp(24, VLCStyle.scale)
++                radius: VLCStyle.dp(3, VLCStyle.scale)
++                color: bsTheme.accent
++            }
++        }
++    }
++
+     // -10 s to +10 s slider with the delay written next to it, and a reset
+     component DelaySlider: RowLayout {
+         id: delaySlider
+-- 
+2.45.0.windows.1
+

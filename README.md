@@ -1,8 +1,11 @@
 # Juxtopposed VLC Rebuild
 
 [Juxtopposed's open-source VLC redesign]
+
 Video: https://www.youtube.com/watch?v=ERFeOgqk324
+
 Design File: https://www.figma.com/design/5UEUReDQz2dQjwoQDHY5z9/VLC-Redesign--Community-
+
 implemented in VLC 4's real Qt/QML interface, as patches on top of upstream VLC.
 
 The redesign itself is QML (Qt Quick) with some C++, in VLC's Qt interface
@@ -14,9 +17,11 @@ so the language bar only shows the helper scripts.
 - `patches/` – the redesign, as `git format-patch` output against `VLC_BASE` (see `scripts/env.sh`)
 - `scripts/setup.sh` – clone VLC into `vlc/` and apply the patches
 - `scripts/build.sh` – build `dist/vlc/vlc.exe` in VideoLAN's Windows CI Docker image, using their prebuilt contribs
-- `scripts/make-icons.sh` – rebuild `VLCIcons.ttf` from the Figma icons (`scripts/icons/mapping.json`)
+- `scripts/make-icons.sh` – rebuild VLC's icon font (`VLCIcons.ttf`) from the Figma icons (`scripts/icons/mapping.json`); the two-tone menu icons are separate SVGs in `vlc/modules/gui/qt/pixmaps/menu/juxt_*.svg`
 - `scripts/run.ps1` – run the build in portable mode (never touches an installed VLC's settings) and screenshot it
+- `scripts/capture-window.ps1` – screenshot the running VLC window (used by `run.ps1 -Shot`)
 - `scripts/save.sh` – commit the work in `vlc/` and regenerate `patches/` from it
+- `scripts/env.sh` – shared settings for the scripts, including `VLC_BASE` (the upstream VLC commit the patches apply to)
 - `design/figma-assets/` – SVGs exported from the Figma file
 
 ## Workflow
@@ -39,8 +44,13 @@ scripts/save.sh "qt: describe the change"   # or --amend to fold into the last v
 
 It commits in `vlc/` and regenerates every file in `patches/`; then commit this
 repo as usual (the patches are left unstaged so everything goes into one
-commit). If you commit `vlc/` from VS Code instead, run `scripts/save.sh` with
-no arguments afterwards to export the patches.
+commit).
+
+If you commit `vlc/` from VS Code instead, the order matters:
+
+1. commit in `vlc/`
+2. run `scripts/save.sh` with no arguments, which writes the new patch file into `patches/`
+3. only then commit this repo, so the commit includes that patch
 
 ## Status
 
