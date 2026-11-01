@@ -72,10 +72,12 @@ with the two-tone orange menu icons, library item menu in the design's order
 and wording with its icons (Play, Mark as Watched, Favorites, Stream, Convert,
 Add to Queue, Add to Playlist, Show in File Explorer, Properties & Metadata),
 library playlist menu (Play, Shuffle, Add to Queue) and orange icons on the
-playlist item, Browse and play queue menus.
+playlist item, Browse and play queue menus, equalizer card in the quick
+settings Audio tab (on/off, presets, preamp and ten bands as dB fields over
+sliders, applied live and saved).
 
 Not yet: library browsing inside the player side panel, settings extras
-(accent color, interface language, equalizer board, extensions list),
+(accent color, interface language, extensions list),
 subtitle presets and timeline, onboarding, menu entries VLC has no action for
 (Favorite and Export Playlist for playlists, Go to Source, Add/Edit Subtitle
 and Audio Tracks, Resync), dialogs, light theme, library icons.

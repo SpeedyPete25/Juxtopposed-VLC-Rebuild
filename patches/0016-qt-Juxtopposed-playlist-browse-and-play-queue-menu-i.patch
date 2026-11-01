@@ -1,0 +1,326 @@
+From 29c659023e515f7b6dfcd95946293d9f567ec901 Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Sat, 31 Oct 2026 11:53:53 +1030
+Subject: [PATCH] qt: Juxtopposed playlist, browse and play queue menu icons
+
+Gives the remaining library and play queue menus the redesign's two-tone orange icons and wording: the library playlist menu becomes Play, Shuffle (new, plays the playlist with shuffle on) and Add to Queue as in the design, playlist items and Browse items use Play, Add to Queue, Add to Playlist and Information with icons, adding a folder to the library gets the add-folder icon, and the play queue menu entries use the new play, stream, info, folder, add, add-folder, export and shuffle icons.
+---
+ modules/gui/qt/Makefile.am                    |  4 ++
+ modules/gui/qt/assets.qrc                     |  4 ++
+ modules/gui/qt/menus/qml_menu_wrapper.cpp     | 66 ++++++++++++-------
+ modules/gui/qt/pixmaps/menu/juxt_add.svg      |  6 ++
+ .../gui/qt/pixmaps/menu/juxt_add_folder.svg   |  7 ++
+ modules/gui/qt/pixmaps/menu/juxt_export.svg   |  9 +++
+ modules/gui/qt/pixmaps/menu/juxt_shuffle.svg  |  6 ++
+ 7 files changed, 77 insertions(+), 25 deletions(-)
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_add.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_add_folder.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_export.svg
+ create mode 100644 modules/gui/qt/pixmaps/menu/juxt_shuffle.svg
+
+diff --git a/modules/gui/qt/Makefile.am b/modules/gui/qt/Makefile.am
+index fcad816..f352bbf 100644
+--- a/modules/gui/qt/Makefile.am
++++ b/modules/gui/qt/Makefile.am
+@@ -910,6 +910,10 @@ libqt_plugin_la_RES = \
+ 	pixmaps/menu/ic_fluent_arrow_eject.svg \
+ 	pixmaps/menu/exit.svg \
+ 	pixmaps/menu/juxt_chevron_right.svg \
++	pixmaps/menu/juxt_add.svg \
++	pixmaps/menu/juxt_add_folder.svg \
++	pixmaps/menu/juxt_export.svg \
++	pixmaps/menu/juxt_shuffle.svg \
+ 	pixmaps/menu/juxt_convert.svg \
+ 	pixmaps/menu/juxt_favorite.svg \
+ 	pixmaps/menu/juxt_folder.svg \
+diff --git a/modules/gui/qt/assets.qrc b/modules/gui/qt/assets.qrc
+index d34e74d..3b18e6f 100644
+--- a/modules/gui/qt/assets.qrc
++++ b/modules/gui/qt/assets.qrc
+@@ -24,6 +24,10 @@
+         <file alias="ic_fluent_arrow_eject.svg">pixmaps/menu/ic_fluent_arrow_eject.svg</file>
+         <file alias="exit.svg">pixmaps/menu/exit.svg</file>
+         <file alias="juxt_chevron_right.svg">pixmaps/menu/juxt_chevron_right.svg</file>
++        <file alias="juxt_add.svg">pixmaps/menu/juxt_add.svg</file>
++        <file alias="juxt_add_folder.svg">pixmaps/menu/juxt_add_folder.svg</file>
++        <file alias="juxt_export.svg">pixmaps/menu/juxt_export.svg</file>
++        <file alias="juxt_shuffle.svg">pixmaps/menu/juxt_shuffle.svg</file>
+         <file alias="juxt_convert.svg">pixmaps/menu/juxt_convert.svg</file>
+         <file alias="juxt_favorite.svg">pixmaps/menu/juxt_favorite.svg</file>
+         <file alias="juxt_folder.svg">pixmaps/menu/juxt_folder.svg</file>
+diff --git a/modules/gui/qt/menus/qml_menu_wrapper.cpp b/modules/gui/qt/menus/qml_menu_wrapper.cpp
+index 072623d..d504738 100644
+--- a/modules/gui/qt/menus/qml_menu_wrapper.cpp
++++ b/modules/gui/qt/menus/qml_menu_wrapper.cpp
+@@ -70,6 +70,12 @@ namespace
+     }
+ }
+ 
++// Juxtopposed: the two-tone (orange and gray) menu icons of the redesign
++static QIcon juxtMenuIcon(const char *name)
++{
++    return QIcon(QStringLiteral(":/menu/juxt_%1.svg").arg(QLatin1String(name)));
++}
++
+ void StringListMenu::popup(const QPoint &point, const QVariantList &stringList)
+ {
+     assert(m_ctx);
+@@ -842,13 +848,21 @@ void PlaylistListContextMenu::popup(const QModelIndexList & selected, QPoint pos
+ 
+     MediaLib * ml = m_model->ml();
+ 
+-    QAction * action = menu->addAction(qtr("Add and play"));
++    QAction * action = menu->addAction(juxtMenuIcon("play"), qtr("Play"));
+ 
+     connect(action, &QAction::triggered, [ml, ids]() {
+         ml->addAndPlay(ids);
+     });
+ 
+-    action = menu->addAction(qtr("Enqueue"));
++    action = menu->addAction(juxtMenuIcon("shuffle"), qtr("Shuffle"));
++
++    qt_intf_t *p_intf = m_ctx->getIntf();
++    connect(action, &QAction::triggered, [p_intf, ml, ids]() {
++        THEMPL->setRandom(true);
++        ml->addAndPlay(ids);
++    });
++
++    action = menu->addAction(juxtMenuIcon("queue"), qtr("Add to Queue"));
+ 
+     connect(action, &QAction::triggered, [ml, ids]() {
+         ml->addToPlaylist(ids);
+@@ -894,32 +908,32 @@ void PlaylistMediaContextMenu::popup(const QModelIndexList & selected, QPoint po
+ 
+     MediaLib * ml = m_model->ml();
+ 
+-    QAction * action = menu->addAction(qtr("Add and play"));
++    QAction * action = menu->addAction(juxtMenuIcon("play"), qtr("Play"));
+ 
+     connect(action, &QAction::triggered, [ml, ids]() {
+         ml->addAndPlay(ids);
+     });
+ 
+-    action = menu->addAction(qtr("Enqueue"));
++    action = menu->addAction(juxtMenuIcon("queue"), qtr("Add to Queue"));
+ 
+     connect(action, &QAction::triggered, [ml, ids]() {
+         ml->addToPlaylist(ids);
+     });
+ 
+-    action = menu->addAction(qtr("Add to playlist"));
++    action = menu->addAction(juxtMenuIcon("playlist"), qtr("Add to Playlist"));
+ 
+     connect(action, &QAction::triggered, [ids]() {
+         DialogsProvider::getInstance()->playlistsDialog(ids);
+     });
+ 
+-    action = menu->addAction(qtr("Play as audio"));
++    action = menu->addAction(juxtMenuIcon("audio"), qtr("Play as audio"));
+ 
+     connect(action, &QAction::triggered, [ml, ids]() {
+         ml->addAndPlay(ids, {":no-video"});
+     });
+ 
+     if (options.contains("information") && options["information"].typeId() == QMetaType::Int) {
+-        action = menu->addAction(qtr("Information"));
++        action = menu->addAction(juxtMenuIcon("info"), qtr("Information"));
+ 
+         QSignalMapper * mapper = new QSignalMapper(menu);
+ 
+@@ -955,17 +969,17 @@ void NetworkMediaContextMenu::popup(const QModelIndexList& selected, QPoint pos)
+     auto menu = newMenu();
+     QAction* action;
+ 
+-    action = menu->addAction( qtr("Add and play") );
++    action = menu->addAction( juxtMenuIcon("play"), qtr("Play") );
+     connect(action, &QAction::triggered, [this, selected]( ) {
+         m_model->addAndPlay(selected);
+     });
+ 
+-    action = menu->addAction( qtr("Enqueue") );
++    action = menu->addAction( juxtMenuIcon("queue"), qtr("Add to Queue") );
+     connect(action, &QAction::triggered, [this, selected]( ) {
+         m_model->addToPlaylist(selected);
+     });
+ 
+-    action = menu->addAction( qtr("Information") );
++    action = menu->addAction( juxtMenuIcon("info"), qtr("Information") );
+     connect(action, &QAction::triggered, [this, selected]( ) {
+         if (selected.isEmpty()) return;
+ 
+@@ -1003,6 +1017,8 @@ void NetworkMediaContextMenu::popup(const QModelIndexList& selected, QPoint pos)
+         action = menu->addAction(removeFromML
+             ? qtr("Remove from Media Library")
+             : qtr("Add to Media Library"));
++        if (!removeFromML)
++            action->setIcon(juxtMenuIcon("add_folder"));
+ 
+         connect(action, &QAction::triggered, [this, selected, removeFromML]( ) {
+             for (const QModelIndex& idx : selected) {
+@@ -1024,17 +1040,17 @@ void NetworkDeviceContextMenu::popup(const QModelIndexList& selected, QPoint pos
+     auto menu = newMenu();
+     QAction* action;
+ 
+-    action = menu->addAction( qtr("Add and play") );
++    action = menu->addAction( juxtMenuIcon("play"), qtr("Play") );
+     connect(action, &QAction::triggered, [this, selected]( ) {
+         m_model->addAndPlay(selected);
+     });
+ 
+-    action = menu->addAction( qtr("Enqueue") );
++    action = menu->addAction( juxtMenuIcon("queue"), qtr("Add to Queue") );
+     connect(action, &QAction::triggered, [this, selected]( ) {
+         m_model->addToPlaylist(selected);
+     });
+ 
+-    action = menu->addAction( qtr("Information") );
++    action = menu->addAction( juxtMenuIcon("info"), qtr("Information") );
+     connect(action, &QAction::triggered, [this, selected]( ) {
+         if (selected.isEmpty()) return;
+ 
+@@ -1077,7 +1093,7 @@ void PlaylistContextMenu::popup(int selectedIndex, QPoint pos )
+ 
+     if (selectedItem)
+     {
+-        action = m_menu->addAction( qtr("Play") );
++        action = m_menu->addAction( juxtMenuIcon("play"), qtr("Play") );
+         connect(action, &QAction::triggered, [this, selectedIndex]( ) {
+             m_controler->goTo(selectedIndex, true);
+         });
+@@ -1087,17 +1103,17 @@ void PlaylistContextMenu::popup(int selectedIndex, QPoint pos )
+ 
+     if (m_controler->currentIndex() != -1)
+     {
+-        action = m_menu->addAction( qtr("Jump to current playing"));
++        action = m_menu->addAction( juxtMenuIcon("source"), qtr("Jump to current playing"));
+         connect(action, &QAction::triggered, this, &PlaylistContextMenu::jumpToCurrentPlaying);
+     }
+ 
+     if (m_selectionModel->hasSelection()) {
+-        action = m_menu->addAction( qtr("Stream") );
++        action = m_menu->addAction( juxtMenuIcon("stream"), qtr("Stream") );
+         connect(action, &QAction::triggered, [selectedUrlList]( ) {
+             DialogsProvider::getInstance()->streamingDialog(selectedUrlList, false);
+         });
+ 
+-        action = m_menu->addAction( qtr("Save") );
++        action = m_menu->addAction( juxtMenuIcon("convert"), qtr("Save") );
+         connect(action, &QAction::triggered, [selectedUrlList]( ) {
+             DialogsProvider::getInstance()->streamingDialog(selectedUrlList, true);
+         });
+@@ -1106,8 +1122,8 @@ void PlaylistContextMenu::popup(int selectedIndex, QPoint pos )
+     }
+ 
+     if (selectedItem) {
+-        action = m_menu->addAction( qtr("Information") );
+-        action->setIcon(QIcon(":/menu/info.svg"));
++        action = m_menu->addAction( juxtMenuIcon("info"), qtr("Information") );
++        action->setIcon(juxtMenuIcon("info"));
+         connect(action, &QAction::triggered, [selectedItem]( ) {
+             DialogsProvider::getInstance()->mediaInfoDialog(selectedItem);
+         });
+@@ -1115,7 +1131,7 @@ void PlaylistContextMenu::popup(int selectedIndex, QPoint pos )
+         m_menu->addSeparator();
+ 
+         action = m_menu->addAction( qtr("Show Containing Directory...") );
+-        action->setIcon(QIcon(":/menu/folder.svg"));
++        action->setIcon(juxtMenuIcon("folder"));
+         connect(action, &QAction::triggered, [this, selectedItem]( ) {
+             m_controler->explore(selectedItem);
+         });
+@@ -1125,19 +1141,19 @@ void PlaylistContextMenu::popup(int selectedIndex, QPoint pos )
+ 
+     action = m_menu->addAction( qtr("Add File...") );
+ 
+-    action->setIcon(ColorizedSvgIcon::colorizedIconForWidget(":/menu/add.svg", m_menu.get()));
++    action->setIcon(juxtMenuIcon("add"));
+     connect(action, &QAction::triggered, []( ) {
+         DialogsProvider::getInstance()->simpleOpenDialog(false);
+     });
+ 
+     action = m_menu->addAction( qtr("Add Directory...") );
+-    action->setIcon(ColorizedSvgIcon::colorizedIconForWidget(":/menu/add.svg", m_menu.get()));
++    action->setIcon(juxtMenuIcon("add_folder"));
+     connect(action, &QAction::triggered, []( ) {
+         DialogsProvider::getInstance()->PLAppendDir();
+     });
+ 
+     action = m_menu->addAction( qtr("Advanced Open...") );
+-    action->setIcon(ColorizedSvgIcon::colorizedIconForWidget(":/menu/add.svg", m_menu.get()));
++    action->setIcon(juxtMenuIcon("add"));
+     connect(action, &QAction::triggered, []( ) {
+         DialogsProvider::getInstance()->PLAppendDialog();
+     });
+@@ -1146,7 +1162,7 @@ void PlaylistContextMenu::popup(int selectedIndex, QPoint pos )
+ 
+     if (m_selectionModel->hasSelection())
+     {
+-        action = m_menu->addAction( qtr("Save Play Queue to File...") );
++        action = m_menu->addAction( juxtMenuIcon("export"), qtr("Save Play Queue to File...") );
+         connect(action, &QAction::triggered, []( ) {
+             DialogsProvider::getInstance()->savePlayingToPlaylist();
+         });
+@@ -1201,7 +1217,7 @@ void PlaylistContextMenu::popup(int selectedIndex, QPoint pos )
+         }
+ 
+         action = m_menu->addAction( qtr("Shuffle the play queue") );
+-        action->setIcon(ColorizedSvgIcon::colorizedIconForWidget(":/menu/ic_fluent_arrow_shuffle.svg", m_menu.get()));
++        action->setIcon(juxtMenuIcon("shuffle"));
+         connect(action, &QAction::triggered, this, [this]( ) {
+             m_controler->shuffle();
+         });
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_add.svg b/modules/gui/qt/pixmaps/menu/juxt_add.svg
+new file mode 100644
+index 0000000..9b78112
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_add.svg
+@@ -0,0 +1,6 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M12 5V19" stroke="#8F8F8F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<path d="M19 12L5 12" stroke="#8F8F8F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_add_folder.svg b/modules/gui/qt/pixmaps/menu/juxt_add_folder.svg
+new file mode 100644
+index 0000000..5712120
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_add_folder.svg
+@@ -0,0 +1,7 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M3 17V9.54085C3 8.13758 4.13758 7 5.54085 7H10.1972C11.3235 7 12.3753 6.43712 13 5.5C13.6247 4.56288 14.6765 4 15.8028 4H18.4024C19.837 4 21 5.16301 21 6.59764V17C21 18.6569 19.6569 20 18 20H6C4.34315 20 3 18.6569 3 17Z" stroke="#8F8F8F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<path d="M12 10V16" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<path d="M9 13L15 13" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_export.svg b/modules/gui/qt/pixmaps/menu/juxt_export.svg
+new file mode 100644
+index 0000000..357a2ab
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_export.svg
+@@ -0,0 +1,9 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g>
++<path d="M3 7V17C3 19.2091 4.79086 21 7 21H8H16H17C19.2091 21 21 19.2091 21 17V10.6569C21 9.59599 20.5786 8.57857 19.8284 7.82843L18 6L16.1716 4.17157C15.4214 3.42143 14.404 3 13.3431 3H13H8H7C4.79086 3 3 4.79086 3 7Z" stroke="#8F8F8F" stroke-width="1.5"/>
++<g>
++<path d="M9 12.7778C8.44772 12.7778 8 13.2255 8 13.7778V18C8 18.5523 8.44772 19 9 19H15C15.5523 19 16 18.5523 16 18V13.7778C16 13.2255 15.5523 12.7778 15 12.7778H9Z" fill="#AB6314"/>
++<path d="M13 6C13 5.44772 12.5523 5 12 5H9C8.44772 5 8 5.44772 8 6V7.88889C8 8.44117 8.44772 8.88889 9 8.88889H12C12.5523 8.88889 13 8.44117 13 7.88889V6Z" fill="#AB6314"/>
++</g>
++</g>
++</svg>
+diff --git a/modules/gui/qt/pixmaps/menu/juxt_shuffle.svg b/modules/gui/qt/pixmaps/menu/juxt_shuffle.svg
+new file mode 100644
+index 0000000..79a5c34
+--- /dev/null
++++ b/modules/gui/qt/pixmaps/menu/juxt_shuffle.svg
+@@ -0,0 +1,6 @@
++<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
++<g transform="translate(2.75 4.75)">
++<path d="M3.25003 5.75L0.75 3.25015L3.25003 0.75M0.75 3.25015H5.38404C7.94213 3.25015 10.1641 5.00999 10.75 7.50008C11.3359 9.99016 13.5579 11.75 16.116 11.75H17.75" stroke="#8F8F8F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++<path d="M3.25003 8.75L0.750002 11.2501L3.25003 13.75M0.750002 11.2501L7.44948 11.2501C8.26502 11.2501 9.02972 10.8539 9.50003 10.1876M17.75 3.25008L14.1642 3.25008C13.2587 3.25008 12.3903 3.60979 11.75 4.25008" stroke="#AB6314" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++</g>
++</svg>
+-- 
+2.45.0.windows.1
+
