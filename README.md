@@ -86,8 +86,12 @@ playlist item, Browse and play queue menus, equalizer card in the quick
 settings Audio tab (on/off, presets, preamp and ten bands as dB fields over
 sliders, applied live and saved).
 
+Fixes to VLC itself: choice lists (such as the audio stereo mode) keep their
+labels when the audio output restarts, instead of showing raw values like "1".
+
 Not yet: library browsing inside the player side panel, settings extras
-(accent color, interface language, extensions list),
+(accent color, extensions list; an interface language setting is not possible
+since VLC 4 always follows the Windows display language),
 subtitle presets and timeline, onboarding, menu entries VLC has no action for
 (Favorite and Export Playlist for playlists, Go to Source, Add/Edit Subtitle
 and Audio Tracks, Resync), dialogs, light theme, library icons.

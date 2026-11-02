@@ -1,0 +1,54 @@
+From ab2781a772c70616ccdbc15b005ee40a38ba6ea4 Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Mon, 2 Nov 2026 18:23:00 +1030
+Subject: [PATCH] qt: keep choice labels when a variable's choices are added
+ later
+
+VLCVarChoiceModel labelled choices added after it was filled with their raw value, so the quick settings stereo mode showed "1" once the audio output restarted (for example after turning the equalizer on). It now reads the choice's text from the variable, as it already did when first filling the list.
+---
+ modules/gui/qt/util/varchoicemodel.cpp | 26 ++++++++++++++++++++++++--
+ 1 file changed, 24 insertions(+), 2 deletions(-)
+
+diff --git a/modules/gui/qt/util/varchoicemodel.cpp b/modules/gui/qt/util/varchoicemodel.cpp
+index 7f77cc0..cec1621 100644
+--- a/modules/gui/qt/util/varchoicemodel.cpp
++++ b/modules/gui/qt/util/varchoicemodel.cpp
+@@ -161,11 +161,33 @@ void VLCVarChoiceModel::onListUpdated(const vlc_object_t* object, int action, QV
+ 
+     switch (action) {
+     case VLC_VAR_ADDCHOICE:
++    {
++        // Juxtopposed: show the choice's text ("Stereo"), not its raw value
++        // ("1"), for choices added after the model was filled, e.g. when the
++        // audio output restarts
++        QString title = newvalue.toString();
++        size_t count = 0;
++        vlc_value_t* val_list = nullptr;
++        char** val_title = nullptr;
++        if( var_Change( m_object->get(), qtu(m_varname), VLC_VAR_GETCHOICES, &count, &val_list, &val_title ) == VLC_SUCCESS )
++        {
++            for (size_t i = 0; i < count; i++)
++            {
++                if ( val_title[i] && vlcValToVariant( val_list[i] ) == newvalue )
++                    title = qfu( val_title[i] );
++                free( val_title[i] );
++                if ( (m_type & VLC_VAR_CLASS) == VLC_VAR_STRING )
++                    free( val_list[i].psz_string );
++            }
++            free( val_list );
++            free( val_title );
++        }
++
+         beginInsertRows( QModelIndex{}, m_values.count(), m_values.count() );
+         m_values.append( newvalue );
+-        //we should probably rather get the whole choices list to get the associated text
+-        m_titles.append( newvalue.toString() );
++        m_titles.append( title );
+         endInsertRows();
++    }
+         break;
+     case VLC_VAR_DELCHOICE:
+     {
+-- 
+2.45.0.windows.1
+
