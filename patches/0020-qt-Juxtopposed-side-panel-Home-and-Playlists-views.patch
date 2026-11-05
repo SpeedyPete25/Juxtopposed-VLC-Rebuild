@@ -1,0 +1,663 @@
+From 6bc129683736240a2e429c3b3c232a689c12b1ff Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Thu, 5 Nov 2026 22:20:11 +1030
+Subject: [PATCH] qt: Juxtopposed side panel Home and Playlists views
+
+Adds a Home view to the player side panel library with short Continue Watching, New Music, Folders, Playlists and Artists sections, and a Playlists view that opens into each playlist's items. The list header gains a reverse order button and a search field, and rows move to their own SidePanelLibraryRow.qml so both views share them.
+---
+ modules/gui/qt/Makefile.am                    |   1 +
+ modules/gui/qt/meson.build                    |   1 +
+ .../gui/qt/player/qml/SidePanelLibrary.qml    | 329 +++++++++++++-----
+ .../gui/qt/player/qml/SidePanelLibraryRow.qml | 107 ++++++
+ modules/gui/qt/player/qml/SidePanelRail.qml   |  24 +-
+ 5 files changed, 369 insertions(+), 93 deletions(-)
+ create mode 100644 modules/gui/qt/player/qml/SidePanelLibraryRow.qml
+
+diff --git a/modules/gui/qt/Makefile.am b/modules/gui/qt/Makefile.am
+index 0ac2ffe..4a3a817 100644
+--- a/modules/gui/qt/Makefile.am
++++ b/modules/gui/qt/Makefile.am
+@@ -1214,6 +1214,7 @@ libqml_module_player_a_QML = \
+ 	player/qml/QuickSettingsPanel.qml \
+ 	player/qml/SidePanelRail.qml \
+ 	player/qml/SidePanelLibrary.qml \
++	player/qml/SidePanelLibraryRow.qml \
+ 	player/qml/PIPPlayer.qml \
+ 	player/qml/Player.qml \
+ 	player/qml/PlayerControlLayout.qml \
+diff --git a/modules/gui/qt/meson.build b/modules/gui/qt/meson.build
+index 457fcd7..e59aa84 100644
+--- a/modules/gui/qt/meson.build
++++ b/modules/gui/qt/meson.build
+@@ -747,6 +747,7 @@ qml_modules += {
+        'player/qml/QuickSettingsPanel.qml',
+        'player/qml/SidePanelRail.qml',
+        'player/qml/SidePanelLibrary.qml',
++       'player/qml/SidePanelLibraryRow.qml',
+        'player/qml/PIPPlayer.qml',
+        'player/qml/Player.qml',
+        'player/qml/PlayerControlLayout.qml',
+diff --git a/modules/gui/qt/player/qml/SidePanelLibrary.qml b/modules/gui/qt/player/qml/SidePanelLibrary.qml
+index 979f186..1d83651 100644
+--- a/modules/gui/qt/player/qml/SidePanelLibrary.qml
++++ b/modules/gui/qt/player/qml/SidePanelLibrary.qml
+@@ -24,19 +24,26 @@ import VLC.Style
+ import VLC.Widgets as Widgets
+ 
+ // Juxtopposed: the library inside the player side panel (Figma "sidebar"
+-// variants): a compact list with a back button, a breadcrumb and the item
+-// count. Videos go through their folders, Music through Songs, Albums,
+-// Artists and Genres; picking a video or a song plays it.
++// variants): a compact list with a back button, a breadcrumb, the item count,
++// sort and search. Home shows short sections, Videos go through their
++// folders, Music through Songs, Albums, Artists and Genres, Playlists through
++// their items; picking a video or a song plays it.
+ Rectangle {
+     id: root
+ 
+-    // "video" or "music"
++    // "home", "video", "music" or "playlists"
+     property string section: "video"
+ 
+-    // The path being shown: [{ kind, title, parentId }]
++    // The path being shown: [{ kind, title }]
+     property var levels: []
+ 
+     readonly property var level: levels.length > 0 ? levels[levels.length - 1] : null
++    readonly property bool isHome: !!level && level.kind === "home"
++
++    // the library model of the current list; the home page and the music
++    // categories have nothing to sort or search
++    readonly property var currentModel: (!level || level.kind === "home" || level.kind === "musicRoot")
++                                        ? null : _modelFor(level.kind)
+ 
+     color: theme.bg.primary
+ 
+@@ -51,25 +58,41 @@ Rectangle {
+     Component.onCompleted: reset()
+ 
+     function reset() {
+-        levels = section === "music"
+-                ? [{ kind: "musicRoot", title: qsTr("Music") }]
+-                : [{ kind: "videoFolders", title: qsTr("Videos") }]
++        _closeSearch()
++        switch (section) {
++        case "home":
++            levels = [{ kind: "home", title: qsTr("Home") }]
++            break
++        case "music":
++            levels = [{ kind: "musicRoot", title: qsTr("Music") }]
++            break
++        case "playlists":
++            levels = [{ kind: "playlists", title: qsTr("Playlists") }]
++            break
++        default:
++            levels = [{ kind: "videoFolders", title: qsTr("Videos") }]
++        }
+     }
+ 
+     function push(kind, title, parentId) {
+-        if (parentId !== undefined) {
+-            const model = _modelFor(kind)
+-            if (model)
+-                model.parentId = parentId
+-        }
++        _closeSearch()
++        if (parentId !== undefined)
++            _modelFor(kind).parentId = parentId
+         levels = levels.concat([{ kind: kind, title: title }])
+     }
+ 
+     function back() {
++        _closeSearch()
+         if (levels.length > 1)
+             levels = levels.slice(0, -1)
+     }
+ 
++    // Clear the filter first: it belongs to the list being left
++    function _closeSearch() {
++        searchInput.text = ""
++        searchRow.visible = false
++    }
++
+     readonly property var _musicCategories: [
+         { kind: "songs", name: qsTr("Songs"), icon: VLCIcons.album_cover },
+         { kind: "albums", name: qsTr("Albums"), icon: VLCIcons.topbar_music },
+@@ -77,9 +100,18 @@ Rectangle {
+         { kind: "genres", name: qsTr("Genres"), icon: VLCIcons.lists }
+     ]
+ 
++    readonly property var _homeSections: [
++        { kind: "recentVideos", title: qsTr("Continue Watching"), model: homeRecentVideos },
++        { kind: "songs", title: qsTr("New Music"), model: homeSongs },
++        { kind: "videoFolders", title: qsTr("Folders"), model: homeFolders },
++        { kind: "playlists", title: qsTr("Playlists"), model: homePlaylists },
++        { kind: "artists", title: qsTr("Artists"), model: homeArtists }
++    ]
++
+     function _modelFor(kind) {
+         switch (kind) {
+         case "musicRoot": return root._musicCategories
++        case "recentVideos": return recentVideos
+         case "videoFolders": return videoFolders
+         case "folderVideos": return folderVideos
+         case "songs": return songs
+@@ -89,13 +121,15 @@ Rectangle {
+         case "albumTracks": return albumTracks
+         case "artistTracks": return artistTracks
+         case "genreTracks": return genreTracks
++        case "playlists": return playlists
++        case "playlistItems": return playlistItems
+         }
+         return null
+     }
+ 
+     // What a row does: open the next level, or play
+-    function _activate(row) {
+-        switch (level.kind) {
++    function _activate(row, kind) {
++        switch (kind) {
+         case "musicRoot":
+             push(row.kind, row.name)
+             break
+@@ -111,11 +145,15 @@ Rectangle {
+         case "genres":
+             push("genreTracks", row.name, row.id)
+             break
++        case "playlists":
++            push("playlistItems", row.name, row.id)
++            break
+         default:
+             MediaLib.addAndPlay(row.id)
+         }
+     }
+ 
++    MLRecentVideoModel { id: recentVideos; ml: MediaLib }
+     MLVideoFoldersModel { id: videoFolders; ml: MediaLib }
+     MLVideoModel { id: folderVideos; ml: MediaLib }
+     MLAudioModel { id: songs; ml: MediaLib }
+@@ -125,8 +163,17 @@ Rectangle {
+     MLAudioModel { id: albumTracks; ml: MediaLib }
+     MLAudioModel { id: artistTracks; ml: MediaLib }
+     MLAudioModel { id: genreTracks; ml: MediaLib }
++    MLPlaylistListModel { id: playlists; ml: MediaLib }
++    MLPlaylistModel { id: playlistItems; ml: MediaLib }
++
++    // The first rows of each list, for the home page
++    MLRecentVideoModel { id: homeRecentVideos; ml: MediaLib; limit: 3 }
++    MLAudioModel { id: homeSongs; ml: MediaLib; limit: 3; sortCriteria: "insertion"; sortOrder: Qt.DescendingOrder }
++    MLVideoFoldersModel { id: homeFolders; ml: MediaLib; limit: 3 }
++    MLPlaylistListModel { id: homePlaylists; ml: MediaLib; limit: 3 }
++    MLArtistModel { id: homeArtists; ml: MediaLib; limit: 3 }
+ 
+-    // Header: back, breadcrumb, item count
++    // Header: back and breadcrumb, then the count (or search) with sort and search
+     Item {
+         id: header
+ 
+@@ -155,7 +202,7 @@ Rectangle {
+             anchors.right: parent.right
+             anchors.verticalCenter: backButton.verticalCenter
+ 
+-            // the last two levels, as in the design ("Videos ▸ Shows")
++            // the last two levels, as in the design ("Videos › Shows")
+             text: root.levels.slice(-2).map((l) => l.title).join("  ›  ")
+             color: theme.fg.primary
+             font.pixelSize: VLCStyle.fontSize_large
+@@ -165,14 +212,93 @@ Rectangle {
+         T.Label {
+             anchors.left: parent.left
+             anchors.leftMargin: VLCStyle.dp(6, VLCStyle.scale)
+-            anchors.bottom: divider.top
+-            anchors.bottomMargin: VLCStyle.dp(10, VLCStyle.scale)
++            anchors.verticalCenter: searchButton.verticalCenter
+ 
++            visible: !root.isHome && !searchRow.visible
+             text: qsTr("%1 item", "%1 items", list.count).arg(list.count)
+             color: windowTheme.fg.secondary
+             font.pixelSize: VLCStyle.fontSize_normal
+         }
+ 
++        Rectangle {
++            id: searchRow
++
++            anchors.left: parent.left
++            anchors.right: sortButton.left
++            anchors.rightMargin: VLCStyle.dp(8, VLCStyle.scale)
++            anchors.verticalCenter: searchButton.verticalCenter
++            height: VLCStyle.dp(26, VLCStyle.scale)
++
++            visible: false
++            radius: VLCStyle.dp(4, VLCStyle.scale)
++            color: theme.bg.secondary
++
++            TextInput {
++                id: searchInput
++
++                anchors.fill: parent
++                anchors.leftMargin: VLCStyle.dp(8, VLCStyle.scale)
++                anchors.rightMargin: VLCStyle.dp(8, VLCStyle.scale)
++                verticalAlignment: TextInput.AlignVCenter
++                clip: true
++                selectByMouse: true
++
++                color: theme.fg.primary
++                font.pixelSize: VLCStyle.fontSize_normal
++
++                Accessible.name: qsTr("Search the list")
++
++                onTextChanged: {
++                    if (root.currentModel)
++                        root.currentModel.searchPattern = text
++                }
++
++                Keys.onEscapePressed: root._closeSearch()
++            }
++        }
++
++        Widgets.IconToolButton {
++            id: searchButton
++
++            anchors.right: parent.right
++            anchors.bottom: divider.top
++            anchors.bottomMargin: VLCStyle.dp(4, VLCStyle.scale)
++
++            visible: !!root.currentModel
++            checked: searchRow.visible
++            text: VLCIcons.search
++            description: qsTr("Search")
++            font.pixelSize: VLCStyle.icon_normal
++
++            onClicked: {
++                if (searchRow.visible) {
++                    root._closeSearch()
++                } else {
++                    searchRow.visible = true
++                    searchInput.forceActiveFocus()
++                }
++            }
++        }
++
++        Widgets.IconToolButton {
++            id: sortButton
++
++            anchors.right: searchButton.left
++            anchors.rightMargin: VLCStyle.dp(4, VLCStyle.scale)
++            anchors.verticalCenter: searchButton.verticalCenter
++
++            visible: !!root.currentModel
++            text: VLCIcons.topbar_sort
++            description: qsTr("Reverse the order")
++            font.pixelSize: VLCStyle.icon_normal
++
++            onClicked: {
++                const model = root.currentModel
++                model.sortOrder = (model.sortOrder === Qt.AscendingOrder) ? Qt.DescendingOrder
++                                                                          : Qt.AscendingOrder
++            }
++        }
++
+         Rectangle {
+             id: divider
+ 
+@@ -193,94 +319,121 @@ Rectangle {
+         anchors.topMargin: VLCStyle.dp(8, VLCStyle.scale)
+         anchors.bottom: parent.bottom
+ 
++        visible: !root.isHome
+         clip: true
+         boundsBehavior: Flickable.StopAtBounds
+-        model: root.level ? root._modelFor(root.level.kind) : null
++        model: (root.level && !root.isHome) ? root._modelFor(root.level.kind) : null
+ 
+         T.ScrollBar.vertical: Widgets.ScrollBarExt { }
+ 
+-        delegate: T.ItemDelegate {
+-            id: row
++        delegate: SidePanelLibraryRow {
++            width: list.width
+ 
+             // array rows (music categories) and library rows alike
+-            readonly property var rowData: (model.modelData !== undefined) ? model.modelData : model
+-            readonly property string image: rowData.thumbnail || rowData.cover || rowData.small_cover || ""
+-            readonly property bool isVideo: root.level.kind === "folderVideos"
++            rowData: (model.modelData !== undefined) ? model.modelData : model
++            rowKind: root.level ? root.level.kind : ""
+ 
+-            width: list.width
+-            implicitHeight: VLCStyle.dp(42, VLCStyle.scale)
++            onClicked: root._activate(rowData, rowKind)
++        }
+ 
+-            text: rowData.title || rowData.name || ""
++        T.Label {
++            anchors.horizontalCenter: parent.horizontalCenter
++            anchors.top: parent.top
++            anchors.topMargin: VLCStyle.dp(24, VLCStyle.scale)
++            visible: list.count === 0
++            text: searchInput.text.length > 0 ? qsTr("No results") : qsTr("Nothing here yet")
++            color: windowTheme.fg.secondary
++            font.pixelSize: VLCStyle.fontSize_normal
++        }
++    }
+ 
+-            Accessible.name: text
++    // Home: the first rows of each list under a title that opens all of it
++    Flickable {
++        id: home
+ 
+-            onClicked: root._activate(rowData)
++        anchors.fill: list
+ 
+-            background: Rectangle {
+-                radius: VLCStyle.dp(4, VLCStyle.scale)
+-                color: row.hovered ? theme.bg.secondary : "transparent"
+-            }
++        visible: root.isHome
++        clip: true
++        boundsBehavior: Flickable.StopAtBounds
++        contentHeight: homeColumn.implicitHeight
+ 
+-            contentItem: Item {
+-                Item {
+-                    id: thumb
+-
+-                    anchors.left: parent.left
+-                    anchors.leftMargin: VLCStyle.dp(6, VLCStyle.scale)
+-                    anchors.verticalCenter: parent.verticalCenter
+-                    width: row.isVideo ? VLCStyle.dp(32, VLCStyle.scale) : VLCStyle.dp(24, VLCStyle.scale)
+-                    height: VLCStyle.dp(24, VLCStyle.scale)
+-
+-                    Image {
+-                        id: cover
+-
+-                        anchors.fill: parent
+-                        visible: row.image.length > 0 && status === Image.Ready
+-                        source: row.image
+-                        asynchronous: true
+-                        fillMode: Image.PreserveAspectCrop
+-                        sourceSize: Qt.size(width * 2, height * 2)
+-                    }
++        T.ScrollBar.vertical: Widgets.ScrollBarExt { }
++
++        Column {
++            id: homeColumn
++
++            width: home.width
++            spacing: VLCStyle.dp(12, VLCStyle.scale)
++
++            Repeater {
++                model: root.isHome ? root._homeSections : []
+ 
+-                    Widgets.IconLabel {
+-                        anchors.centerIn: parent
+-                        visible: !cover.visible
+-                        text: row.rowData.icon
+-                              ?? (root.level.kind === "videoFolders" ? VLCIcons.folder
+-                                  : root.level.kind === "artists" ? VLCIcons.artist
+-                                  : root.level.kind === "albums" ? VLCIcons.topbar_music
+-                                  : root.level.kind === "genres" ? VLCIcons.lists
+-                                  : row.isVideo ? VLCIcons.topbar_video : VLCIcons.album_cover)
+-                        color: windowTheme.fg.secondary
+-                        font.pixelSize: VLCStyle.icon_normal
++                Column {
++                    id: homeSection
++
++                    required property var modelData
++
++                    width: homeColumn.width
++                    visible: homeSection.modelData.model.count > 0
++
++                    T.AbstractButton {
++                        id: sectionTitle
++
++                        width: parent.width
++                        implicitHeight: VLCStyle.dp(36, VLCStyle.scale)
++
++                        text: homeSection.modelData.title
++
++                        Accessible.name: text
++
++                        onClicked: root.push(homeSection.modelData.kind, homeSection.modelData.title)
++
++                        contentItem: Item {
++                            T.Label {
++                                anchors.left: parent.left
++                                anchors.leftMargin: VLCStyle.dp(6, VLCStyle.scale)
++                                anchors.verticalCenter: parent.verticalCenter
++                                text: sectionTitle.text
++                                color: sectionTitle.hovered ? theme.fg.primary : windowTheme.fg.secondary
++                                font.pixelSize: VLCStyle.fontSize_large
++                            }
++
++                            Widgets.IconLabel {
++                                anchors.right: parent.right
++                                anchors.rightMargin: VLCStyle.dp(6, VLCStyle.scale)
++                                anchors.verticalCenter: parent.verticalCenter
++                                text: VLCIcons.ic_fluent_chevron_right_24
++                                color: windowTheme.fg.secondary
++                                font.pixelSize: VLCStyle.icon_normal
++                            }
++                        }
+                     }
+-                }
+ 
+-                T.Label {
+-                    anchors.left: thumb.right
+-                    anchors.leftMargin: VLCStyle.dp(12, VLCStyle.scale)
+-                    anchors.right: parent.right
+-                    anchors.verticalCenter: parent.verticalCenter
+-
+-                    // songs and albums read "title - artist", as in the design
+-                    text: (row.rowData.main_artist && root.level.kind !== "musicRoot")
+-                          ? qsTr("%1 - %2").arg(row.text).arg(row.rowData.main_artist)
+-                          : row.text
+-                    color: row.hovered ? theme.fg.primary : windowTheme.fg.secondary
+-                    font.pixelSize: VLCStyle.fontSize_normal
+-                    elide: Text.ElideRight
++                    Repeater {
++                        model: homeSection.modelData.model
++
++                        SidePanelLibraryRow {
++                            width: homeSection.width
++
++                            rowData: model
++                            rowKind: homeSection.modelData.kind
++
++                            onClicked: root._activate(rowData, rowKind)
++                        }
++                    }
+                 }
+             }
+-        }
+ 
+-        T.Label {
+-            anchors.horizontalCenter: parent.horizontalCenter
+-            anchors.top: parent.top
+-            anchors.topMargin: VLCStyle.dp(24, VLCStyle.scale)
+-            visible: list.count === 0 && root.level && root.level.kind !== "musicRoot"
+-            text: qsTr("Nothing here yet")
+-            color: windowTheme.fg.secondary
+-            font.pixelSize: VLCStyle.fontSize_normal
++            T.Label {
++                anchors.horizontalCenter: parent.horizontalCenter
++                topPadding: VLCStyle.dp(24, VLCStyle.scale)
++                visible: homeRecentVideos.count + homeSongs.count + homeFolders.count
++                         + homePlaylists.count + homeArtists.count === 0
++                text: qsTr("Nothing here yet")
++                color: windowTheme.fg.secondary
++                font.pixelSize: VLCStyle.fontSize_normal
++            }
+         }
+     }
+ }
+diff --git a/modules/gui/qt/player/qml/SidePanelLibraryRow.qml b/modules/gui/qt/player/qml/SidePanelLibraryRow.qml
+new file mode 100644
+index 0000000..cef68f0
+--- /dev/null
++++ b/modules/gui/qt/player/qml/SidePanelLibraryRow.qml
+@@ -0,0 +1,107 @@
++/*****************************************************************************
++ * Copyright (C) 2026 VLC authors and VideoLAN
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * ( at your option ) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
++ *****************************************************************************/
++import QtQuick
++import QtQuick.Templates as T
++
++import VLC.MainInterface
++import VLC.Style
++import VLC.Widgets as Widgets
++
++// Juxtopposed: one row of the side panel library: a thumbnail, cover or icon
++// and the name. rowData is a library item or a { name, icon } entry, rowKind
++// the kind of list it belongs to (see SidePanelLibrary).
++T.ItemDelegate {
++    id: row
++
++    property var rowData
++    property string rowKind
++
++    readonly property string image: rowData.thumbnail || rowData.cover || rowData.small_cover || ""
++    readonly property bool isVideo: rowKind === "folderVideos" || rowKind === "recentVideos"
++                                    || rowKind === "playlistItems"
++
++    readonly property string fallbackIcon: {
++        switch (rowKind) {
++        case "videoFolders": return VLCIcons.folder
++        case "artists": return VLCIcons.artist
++        case "albums": return VLCIcons.topbar_music
++        case "genres": return VLCIcons.lists
++        case "playlists": return VLCIcons.playlist
++        }
++        return isVideo ? VLCIcons.topbar_video : VLCIcons.album_cover
++    }
++
++    implicitHeight: VLCStyle.dp(42, VLCStyle.scale)
++
++    text: rowData.title || rowData.name || ""
++
++    Accessible.name: text
++
++    ColorContext { id: rowView; colorSet: ColorContext.View }
++    ColorContext { id: rowWindow; colorSet: ColorContext.Window }
++
++    background: Rectangle {
++        radius: VLCStyle.dp(4, VLCStyle.scale)
++        color: row.hovered ? rowView.bg.secondary : "transparent"
++    }
++
++    contentItem: Item {
++        Item {
++            id: thumb
++
++            anchors.left: parent.left
++            anchors.leftMargin: VLCStyle.dp(6, VLCStyle.scale)
++            anchors.verticalCenter: parent.verticalCenter
++            width: row.isVideo ? VLCStyle.dp(32, VLCStyle.scale) : VLCStyle.dp(24, VLCStyle.scale)
++            height: VLCStyle.dp(24, VLCStyle.scale)
++
++            Image {
++                id: cover
++
++                anchors.fill: parent
++                visible: row.image.length > 0 && status === Image.Ready
++                source: row.image
++                asynchronous: true
++                fillMode: Image.PreserveAspectCrop
++                sourceSize: Qt.size(width * 2, height * 2)
++            }
++
++            Widgets.IconLabel {
++                anchors.centerIn: parent
++                visible: !cover.visible
++                text: row.rowData.icon ?? row.fallbackIcon
++                color: rowWindow.fg.secondary
++                font.pixelSize: VLCStyle.icon_normal
++            }
++        }
++
++        T.Label {
++            anchors.left: thumb.right
++            anchors.leftMargin: VLCStyle.dp(12, VLCStyle.scale)
++            anchors.right: parent.right
++            anchors.verticalCenter: parent.verticalCenter
++
++            // songs and albums read "title - artist", as in the design
++            text: row.rowData.main_artist ? qsTr("%1 - %2").arg(row.text).arg(row.rowData.main_artist)
++                                          : row.text
++            color: row.hovered ? rowView.fg.primary : rowWindow.fg.secondary
++            font.pixelSize: VLCStyle.fontSize_normal
++            elide: Text.ElideRight
++        }
++    }
++}
+diff --git a/modules/gui/qt/player/qml/SidePanelRail.qml b/modules/gui/qt/player/qml/SidePanelRail.qml
+index 312414e..9460da2 100644
+--- a/modules/gui/qt/player/qml/SidePanelRail.qml
++++ b/modules/gui/qt/player/qml/SidePanelRail.qml
+@@ -23,15 +23,15 @@ import VLC.Widgets as Widgets
+ import VLC.Dialogs
+ import VLC.Util
+ 
+-// Juxtopposed: the icon rail on the left of the player side panel. Video
+-// and Music browse the library inside the panel, the play queue button goes
+-// back to the queue; Home and Browse open in the main window.
++// Juxtopposed: the icon rail on the left of the player side panel. Home,
++// Video, Music and Playlists browse the library inside the panel, the play
++// queue button goes back to the queue; Browse opens in the main window.
+ Rectangle {
+     id: root
+ 
+     implicitWidth: VLCStyle.juxtSideRail_width
+ 
+-    // what the panel shows: "queue", "video" or "music"
++    // what the panel shows: "queue", "home", "video", "music" or "playlists"
+     property string section: "queue"
+ 
+     color: theme.bg.secondary
+@@ -56,7 +56,13 @@ Rectangle {
+         RailButton {
+             text: VLCIcons.home
+             description: qsTr("Home")
+-            onClicked: root._openLibrary(["home"])
++            checked: root.section === "home"
++            onClicked: {
++                if (MainCtx.mediaLibraryAvailable)
++                    root.section = "home"
++                else
++                    root._openLibrary(["home"])
++            }
+         }
+ 
+         RailButton {
+@@ -81,6 +87,14 @@ Rectangle {
+             onClicked: root._openLibrary(["network"])
+         }
+ 
++        RailButton {
++            visible: MainCtx.mediaLibraryAvailable
++            text: VLCIcons.lists
++            description: qsTr("Playlists")
++            checked: root.section === "playlists"
++            onClicked: root.section = "playlists"
++        }
++
+         RailButton {
+             text: VLCIcons.playlist
+             description: qsTr("Play Queue")
+-- 
+2.45.0.windows.1
+
