@@ -86,14 +86,15 @@ playlist item, Browse and play queue menus, equalizer card in the quick
 settings Audio tab (on/off, presets, preamp and ten bands as dB fields over
 sliders, applied live and saved), library browsing inside the player side
 panel: Home (short sections), Video (folders, then their videos), Music (Songs,
-Albums, Artists, Genres, then their tracks) and Playlists, with a back button,
+Albums, Artists, Genres, then their tracks), Playlists and Browse (Add Network
+Stream, folders, drives, devices and network shares), with a back button,
 breadcrumb, item count, reverse order and search; picking a video or song plays it.
 
 Fixes to VLC itself: choice lists (such as the audio stereo mode) keep their
 labels when the audio output restarts, instead of showing raw values like "1".
 
-Not yet: the side panel's Browse view, sort by field, list/grid switch and Add
-row, settings extras
+Not yet: sort by field, list/grid switch and Add row in the side panel, settings
+extras
 (accent color, extensions list; an interface language setting is not possible
 since VLC 4 always follows the Windows display language),
 subtitle presets and timeline, onboarding, menu entries VLC has no action for

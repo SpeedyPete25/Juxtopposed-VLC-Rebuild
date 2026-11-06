@@ -1,0 +1,354 @@
+From 82e0c7982abd2c75c167731bae94f41e247f84be Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Fri, 6 Nov 2026 18:23:29 +1030
+Subject: [PATCH] qt: add the Browse view to the player side panel
+
+Browse now opens inside the panel with Add Network Stream, folders, drives, devices and network shares, and folders open level by level with back, breadcrumb, item count, reverse order and search. Picking a file plays it. Device models are only created when Browse is first opened, so scanning for network shares does not start before then.
+
+The library view now blocks clicks and scrolling from reaching the play queue underneath it, and an empty list says Loading while it is still being read.
+---
+ .../gui/qt/player/qml/SidePanelLibrary.qml    | 142 ++++++++++++++++--
+ .../gui/qt/player/qml/SidePanelLibraryRow.qml |  14 +-
+ modules/gui/qt/player/qml/SidePanelRail.qml   |  14 +-
+ 3 files changed, 150 insertions(+), 20 deletions(-)
+
+diff --git a/modules/gui/qt/player/qml/SidePanelLibrary.qml b/modules/gui/qt/player/qml/SidePanelLibrary.qml
+index 1d83651..f5196d7 100644
+--- a/modules/gui/qt/player/qml/SidePanelLibrary.qml
++++ b/modules/gui/qt/player/qml/SidePanelLibrary.qml
+@@ -22,27 +22,33 @@ import VLC.MainInterface
+ import VLC.MediaLibrary
+ import VLC.Style
+ import VLC.Widgets as Widgets
++import VLC.Dialogs
++import VLC.Network as Net
+ 
+ // Juxtopposed: the library inside the player side panel (Figma "sidebar"
+ // variants): a compact list with a back button, a breadcrumb, the item count,
+ // sort and search. Home shows short sections, Videos go through their
+ // folders, Music through Songs, Albums, Artists and Genres, Playlists through
+-// their items; picking a video or a song plays it.
++// their items, Browse through folders and network shares; picking a video or
++// a song plays it.
+ Rectangle {
+     id: root
+ 
+-    // "home", "video", "music" or "playlists"
++    // "home", "video", "music", "playlists" or "browse"
+     property string section: "video"
+ 
+-    // The path being shown: [{ kind, title }]
++    // The path being shown: [{ kind, title, model (browsing only) }]
+     property var levels: []
+ 
+     readonly property var level: levels.length > 0 ? levels[levels.length - 1] : null
+-    readonly property bool isHome: !!level && level.kind === "home"
++    readonly property bool isBrowseRoot: !!level && level.kind === "browseRoot"
++
++    // pages made of short sections instead of one list
++    readonly property bool isHome: !!level && (level.kind === "home" || isBrowseRoot)
+ 
+     // the library model of the current list; the home page and the music
+     // categories have nothing to sort or search
+-    readonly property var currentModel: (!level || level.kind === "home" || level.kind === "musicRoot")
++    readonly property var currentModel: (!level || isHome || level.kind === "musicRoot")
+                                         ? null : _modelFor(level.kind)
+ 
+     color: theme.bg.primary
+@@ -59,6 +65,12 @@ Rectangle {
+ 
+     function reset() {
+         _closeSearch()
++        const left = levels
++        _setSectionLevels()
++        left.forEach((l) => { if (l.model) l.model.destroy() })
++    }
++
++    function _setSectionLevels() {
+         switch (section) {
+         case "home":
+             levels = [{ kind: "home", title: qsTr("Home") }]
+@@ -69,6 +81,10 @@ Rectangle {
+         case "playlists":
+             levels = [{ kind: "playlists", title: qsTr("Playlists") }]
+             break
++        case "browse":
++            browseModels.active = true
++            levels = [{ kind: "browseRoot", title: qsTr("Browse") }]
++            break
+         default:
+             levels = [{ kind: "videoFolders", title: qsTr("Videos") }]
+         }
+@@ -83,8 +99,20 @@ Rectangle {
+ 
+     function back() {
+         _closeSearch()
+-        if (levels.length > 1)
+-            levels = levels.slice(0, -1)
++        if (levels.length < 2)
++            return
++        const left = levels[levels.length - 1]
++        levels = levels.slice(0, -1)
++        if (left.model)
++            left.model.destroy()
++    }
++
++    // A model per folder, like VLC's own browse pages. Make it before closing
++    // the search: tree refers to its row, which clearing the filter replaces
++    function _pushTree(title, tree) {
++        const model = browseTreeModel.createObject(root, { tree: tree })
++        _closeSearch()
++        levels = levels.concat([{ kind: "browseTree", title: title, model: model }])
+     }
+ 
+     // Clear the filter first: it belongs to the list being left
+@@ -101,13 +129,23 @@ Rectangle {
+     ]
+ 
+     readonly property var _homeSections: [
+-        { kind: "recentVideos", title: qsTr("Continue Watching"), model: homeRecentVideos },
+-        { kind: "songs", title: qsTr("New Music"), model: homeSongs },
+-        { kind: "videoFolders", title: qsTr("Folders"), model: homeFolders },
+-        { kind: "playlists", title: qsTr("Playlists"), model: homePlaylists },
+-        { kind: "artists", title: qsTr("Artists"), model: homeArtists }
++        { kind: "recentVideos", title: qsTr("Continue Watching"), model: homeRecentVideos, opens: true },
++        { kind: "songs", title: qsTr("New Music"), model: homeSongs, opens: true },
++        { kind: "videoFolders", title: qsTr("Folders"), model: homeFolders, opens: true },
++        { kind: "playlists", title: qsTr("Playlists"), model: homePlaylists, opens: true },
++        { kind: "artists", title: qsTr("Artists"), model: homeArtists, opens: true }
+     ]
+ 
++    // These are whole lists already, there is nothing more to open
++    readonly property var _browseSections: browseModels.item ? [
++        { kind: "paths", title: qsTr("Folders"), model: browseModels.item.paths },
++        { kind: "computer", title: qsTr("Computer"), model: browseModels.item.computer },
++        { kind: "devices", title: qsTr("Devices"), model: browseModels.item.devices },
++        { kind: "lan", title: qsTr("Network"), model: browseModels.item.lan }
++    ] : []
++
++    readonly property var _sections: isBrowseRoot ? _browseSections : _homeSections
++
+     function _modelFor(kind) {
+         switch (kind) {
+         case "musicRoot": return root._musicCategories
+@@ -123,6 +161,11 @@ Rectangle {
+         case "genreTracks": return genreTracks
+         case "playlists": return playlists
+         case "playlistItems": return playlistItems
++        case "browseTree": return level ? level.model : null
++        case "paths": return browseModels.item ? browseModels.item.paths : null
++        case "computer": return browseModels.item ? browseModels.item.computer : null
++        case "devices": return browseModels.item ? browseModels.item.devices : null
++        case "lan": return browseModels.item ? browseModels.item.lan : null
+         }
+         return null
+     }
+@@ -148,11 +191,31 @@ Rectangle {
+         case "playlists":
+             push("playlistItems", row.name, row.id)
+             break
++        case "paths":
++        case "computer":
++        case "devices":
++        case "lan":
++        case "browseTree":
++            if (row.type === Net.NetworkMediaModel.TYPE_DIRECTORY
++                    || row.type === Net.NetworkMediaModel.TYPE_NODE
++                    || row.type === Net.NetworkMediaModel.TYPE_PLAYLIST)
++                _pushTree(row.name, row.tree)
++            else
++                _modelFor(kind).addAndPlay(row.index)
++            break
+         default:
+             MediaLib.addAndPlay(row.id)
+         }
+     }
+ 
++    // The queue is still underneath: keep the mouse and the wheel from reaching it
++    MouseArea {
++        anchors.fill: parent
++        acceptedButtons: Qt.AllButtons
++        hoverEnabled: true
++        onWheel: (wheel) => wheel.accepted = true
++    }
++
+     MLRecentVideoModel { id: recentVideos; ml: MediaLib }
+     MLVideoFoldersModel { id: videoFolders; ml: MediaLib }
+     MLVideoModel { id: folderVideos; ml: MediaLib }
+@@ -166,6 +229,39 @@ Rectangle {
+     MLPlaylistListModel { id: playlists; ml: MediaLib }
+     MLPlaylistModel { id: playlistItems; ml: MediaLib }
+ 
++    Component {
++        id: browseTreeModel
++
++        Net.NetworkMediaModel { ctx: MainCtx; sortCriteria: "name" }
++    }
++
++    // Made when Browse is first opened: the device models start looking for
++    // network shares as soon as they exist
++    Loader {
++        id: browseModels
++
++        active: false
++
++        sourceComponent: QtObject {
++            readonly property Net.StandardPathModel paths: Net.StandardPathModel { }
++            readonly property Net.NetworkDeviceModel computer: Net.NetworkDeviceModel {
++                ctx: MainCtx
++                sd_source: Net.NetworkDeviceModel.CAT_MYCOMPUTER
++                source_name: "*"
++            }
++            readonly property Net.NetworkDeviceModel devices: Net.NetworkDeviceModel {
++                ctx: MainCtx
++                sd_source: Net.NetworkDeviceModel.CAT_DEVICES
++                source_name: "*"
++            }
++            readonly property Net.NetworkDeviceModel lan: Net.NetworkDeviceModel {
++                ctx: MainCtx
++                sd_source: Net.NetworkDeviceModel.CAT_LAN
++                source_name: "*"
++            }
++        }
++    }
++
+     // The first rows of each list, for the home page
+     MLRecentVideoModel { id: homeRecentVideos; ml: MediaLib; limit: 3 }
+     MLAudioModel { id: homeSongs; ml: MediaLib; limit: 3; sortCriteria: "insertion"; sortOrder: Qt.DescendingOrder }
+@@ -341,7 +437,11 @@ Rectangle {
+             anchors.top: parent.top
+             anchors.topMargin: VLCStyle.dp(24, VLCStyle.scale)
+             visible: list.count === 0
+-            text: searchInput.text.length > 0 ? qsTr("No results") : qsTr("Nothing here yet")
++            text: {
++                if (list.model && list.model.loading)
++                    return qsTr("Loading...")
++                return searchInput.text.length > 0 ? qsTr("No results") : qsTr("Nothing here yet")
++            }
+             color: windowTheme.fg.secondary
+             font.pixelSize: VLCStyle.fontSize_normal
+         }
+@@ -366,8 +466,17 @@ Rectangle {
+             width: home.width
+             spacing: VLCStyle.dp(12, VLCStyle.scale)
+ 
++            SidePanelLibraryRow {
++                width: homeColumn.width
++                visible: root.isBrowseRoot
++
++                rowData: ({ name: qsTr("Add Network Stream"), icon: VLCIcons.add })
++
++                onClicked: DialogsProvider.openNetDialog()
++            }
++
+             Repeater {
+-                model: root.isHome ? root._homeSections : []
++                model: root.isHome ? root._sections : []
+ 
+                 Column {
+                     id: homeSection
+@@ -387,6 +496,8 @@ Rectangle {
+ 
+                         Accessible.name: text
+ 
++                        enabled: !!homeSection.modelData.opens
++
+                         onClicked: root.push(homeSection.modelData.kind, homeSection.modelData.title)
+ 
+                         contentItem: Item {
+@@ -403,6 +514,7 @@ Rectangle {
+                                 anchors.right: parent.right
+                                 anchors.rightMargin: VLCStyle.dp(6, VLCStyle.scale)
+                                 anchors.verticalCenter: parent.verticalCenter
++                                visible: sectionTitle.enabled
+                                 text: VLCIcons.ic_fluent_chevron_right_24
+                                 color: windowTheme.fg.secondary
+                                 font.pixelSize: VLCStyle.icon_normal
+@@ -428,7 +540,7 @@ Rectangle {
+             T.Label {
+                 anchors.horizontalCenter: parent.horizontalCenter
+                 topPadding: VLCStyle.dp(24, VLCStyle.scale)
+-                visible: homeRecentVideos.count + homeSongs.count + homeFolders.count
++                visible: !root.isBrowseRoot && homeRecentVideos.count + homeSongs.count + homeFolders.count
+                          + homePlaylists.count + homeArtists.count === 0
+                 text: qsTr("Nothing here yet")
+                 color: windowTheme.fg.secondary
+diff --git a/modules/gui/qt/player/qml/SidePanelLibraryRow.qml b/modules/gui/qt/player/qml/SidePanelLibraryRow.qml
+index cef68f0..901f9e7 100644
+--- a/modules/gui/qt/player/qml/SidePanelLibraryRow.qml
++++ b/modules/gui/qt/player/qml/SidePanelLibraryRow.qml
+@@ -21,6 +21,7 @@ import QtQuick.Templates as T
+ import VLC.MainInterface
+ import VLC.Style
+ import VLC.Widgets as Widgets
++import VLC.Network as Net
+ 
+ // Juxtopposed: one row of the side panel library: a thumbnail, cover or icon
+ // and the name. rowData is a library item or a { name, icon } entry, rowKind
+@@ -31,7 +32,12 @@ T.ItemDelegate {
+     property var rowData
+     property string rowKind
+ 
+-    readonly property string image: rowData.thumbnail || rowData.cover || rowData.small_cover || ""
++    readonly property string image: rowData.thumbnail || rowData.cover || rowData.small_cover
++                                    || rowData.artwork || ""
++
++    readonly property bool isFolder: rowData.type === Net.NetworkMediaModel.TYPE_DIRECTORY
++                                     || rowData.type === Net.NetworkMediaModel.TYPE_NODE
++                                     || rowData.type === Net.NetworkMediaModel.TYPE_PLAYLIST
+     readonly property bool isVideo: rowKind === "folderVideos" || rowKind === "recentVideos"
+                                     || rowKind === "playlistItems"
+ 
+@@ -42,6 +48,12 @@ T.ItemDelegate {
+         case "albums": return VLCIcons.topbar_music
+         case "genres": return VLCIcons.lists
+         case "playlists": return VLCIcons.playlist
++        case "paths":
++        case "computer":
++        case "devices":
++        case "lan":
++        case "browseTree":
++            return isFolder ? VLCIcons.folder : VLCIcons.topbar_video
+         }
+         return isVideo ? VLCIcons.topbar_video : VLCIcons.album_cover
+     }
+diff --git a/modules/gui/qt/player/qml/SidePanelRail.qml b/modules/gui/qt/player/qml/SidePanelRail.qml
+index 9460da2..1a70d4e 100644
+--- a/modules/gui/qt/player/qml/SidePanelRail.qml
++++ b/modules/gui/qt/player/qml/SidePanelRail.qml
+@@ -24,14 +24,14 @@ import VLC.Dialogs
+ import VLC.Util
+ 
+ // Juxtopposed: the icon rail on the left of the player side panel. Home,
+-// Video, Music and Playlists browse the library inside the panel, the play
+-// queue button goes back to the queue; Browse opens in the main window.
++// Video, Music, Browse and Playlists show inside the panel, the play queue
++// button goes back to the queue.
+ Rectangle {
+     id: root
+ 
+     implicitWidth: VLCStyle.juxtSideRail_width
+ 
+-    // what the panel shows: "queue", "home", "video", "music" or "playlists"
++    // what the panel shows: "queue", "home", "video", "music", "browse" or "playlists"
+     property string section: "queue"
+ 
+     color: theme.bg.secondary
+@@ -84,7 +84,13 @@ Rectangle {
+         RailButton {
+             text: VLCIcons.topbar_network
+             description: qsTr("Browse")
+-            onClicked: root._openLibrary(["network"])
++            checked: root.section === "browse"
++            onClicked: {
++                if (MainCtx.mediaLibraryAvailable)
++                    root.section = "browse"
++                else
++                    root._openLibrary(["network"])
++            }
+         }
+ 
+         RailButton {
+-- 
+2.45.0.windows.1
+
