@@ -88,13 +88,16 @@ sliders, applied live and saved), library browsing inside the player side
 panel: Home (short sections), Video (folders, then their videos), Music (Songs,
 Albums, Artists, Genres, then their tracks), Playlists and Browse (Add Network
 Stream, folders, drives, devices and network shares), with a back button,
-breadcrumb, item count, reverse order and search; picking a video or song plays it.
+breadcrumb, item count, sort menu (VLC's fields per list, an orange dot when not
+A to Z), search and an Add row (add a folder to the library, or Create playlist);
+picking a video or song plays it.
 
 Fixes to VLC itself: choice lists (such as the audio stereo mode) keep their
-labels when the audio output restarts, instead of showing raw values like "1".
+labels when the audio output restarts, instead of showing raw values like "1";
+creating an empty playlist no longer trips an assertion.
 
-Not yet: sort by field, list/grid switch and Add row in the side panel, settings
-extras
+Not yet: the side panel's list/grid switch and its forward, "..." and pop-out
+buttons, settings extras
 (accent color, extensions list; an interface language setting is not possible
 since VLC 4 always follows the Windows display language),
 subtitle presets and timeline, onboarding, menu entries VLC has no action for

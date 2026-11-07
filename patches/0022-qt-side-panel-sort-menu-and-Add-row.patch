@@ -1,0 +1,306 @@
+From 4273531e01962521f10a69e3e2a266ec47042acf Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Sat, 7 Nov 2026 23:20:17 +1030
+Subject: [PATCH] qt: side panel sort menu and Add row
+
+The side panel's reverse order button is now VLC's sort menu with the fields VLC offers for each list, and the icon gets an orange dot when the list is not sorted by its first field from A to Z. Lists start with an Add row as in the design: Add opens a folder picker and adds the folder to the media library, and Create playlist turns into a name field that creates the playlist on Enter.
+
+Creating an empty playlist no longer trips the assertion in MLPlaylistListModel::append, which create called even with no items to add.
+---
+ .../qt/dialogs/preferences/vlc_settings.cpp   |  18 ++
+ .../qt/dialogs/preferences/vlc_settings.hpp   |   4 +
+ .../qt/medialibrary/mlplaylistlistmodel.cpp   |   3 +-
+ .../gui/qt/player/qml/SidePanelLibrary.qml    | 169 ++++++++++++++++--
+ 4 files changed, 183 insertions(+), 11 deletions(-)
+
+diff --git a/modules/gui/qt/dialogs/preferences/vlc_settings.cpp b/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
+index 7e2f766..9d370ee 100644
+--- a/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
++++ b/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
+@@ -36,6 +36,7 @@
+ 
+ #include <vlc_actions.h>
+ #include <vlc_configuration.h>
++#include <vlc_media_library.h>
+ #include <vlc_modules.h>
+ #include <vlc_plugin.h>
+ 
+@@ -223,6 +224,23 @@ QVariantList VLCSettings::coreOptions(const QVariantList &subcategories) const
+     return result;
+ }
+ 
++QString VLCSettings::addLibraryFolder()
++{
++    vlc_medialibrary_t *ml = vlc_ml_instance_get(m_intf);
++    if (!ml)
++        return {};
++
++    const QString path = QFileDialog::getExistingDirectory(nullptr, qtr("Add a folder to the library"),
++                                                           QDir::homePath());
++    if (path.isEmpty())
++        return {};
++
++    const QByteArray mrl = QUrl::fromLocalFile(path).toString(QUrl::FullyEncoded).toUtf8();
++    if (vlc_ml_add_folder(ml, mrl.constData()) != VLC_SUCCESS)
++        return {};
++    return QDir::toNativeSeparators(path);
++}
++
+ QString VLCSettings::browse(const QString &name)
+ {
+     const QByteArray utf8 = name.toUtf8();
+diff --git a/modules/gui/qt/dialogs/preferences/vlc_settings.hpp b/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
+index 3b7be9c..3007df6 100644
+--- a/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
++++ b/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
+@@ -53,6 +53,10 @@ public:
+     // (empty if cancelled).
+     Q_INVOKABLE QString browse(const QString &name);
+ 
++    // Asks for a folder and adds it to the media library (indexed in the
++    // background); returns it, or empty if cancelled or there is no library
++    Q_INVOKABLE QString addLibraryFolder();
++
+     // Every hotkey action: [{ name: "key-...", text, value, globalValue }]
+     Q_INVOKABLE QVariantList hotkeys() const;
+ 
+diff --git a/modules/gui/qt/medialibrary/mlplaylistlistmodel.cpp b/modules/gui/qt/medialibrary/mlplaylistlistmodel.cpp
+index 7509a14..29aa9fb 100644
+--- a/modules/gui/qt/medialibrary/mlplaylistlistmodel.cpp
++++ b/modules/gui/qt/medialibrary/mlplaylistlistmodel.cpp
+@@ -108,7 +108,8 @@ void appendMediaIntoPlaylist(vlc_medialibrary_t* ml, int64_t playlistId, const s
+     [this, initialItems](quint64, const Ctx& ctx) {
+         endTransaction(); // this is intentionally called here and not after `append()`
+ 
+-        if (ctx.createdPlaylistId.id)
++        // an empty new playlist has nothing to append (append asserts on that)
++        if (ctx.createdPlaylistId.id && !initialItems.isEmpty())
+         {
+             append(ctx.createdPlaylistId, initialItems);
+         }
+diff --git a/modules/gui/qt/player/qml/SidePanelLibrary.qml b/modules/gui/qt/player/qml/SidePanelLibrary.qml
+index f5196d7..52bee54 100644
+--- a/modules/gui/qt/player/qml/SidePanelLibrary.qml
++++ b/modules/gui/qt/player/qml/SidePanelLibrary.qml
+@@ -27,7 +27,7 @@ import VLC.Network as Net
+ 
+ // Juxtopposed: the library inside the player side panel (Figma "sidebar"
+ // variants): a compact list with a back button, a breadcrumb, the item count,
+-// sort and search. Home shows short sections, Videos go through their
++// sort, search and an Add row. Home shows short sections, Videos go through their
+ // folders, Music through Songs, Albums, Artists and Genres, Playlists through
+ // their items, Browse through folders and network shares; picking a video or
+ // a song plays it.
+@@ -51,6 +51,79 @@ Rectangle {
+     readonly property var currentModel: (!level || isHome || level.kind === "musicRoot")
+                                         ? null : _modelFor(level.kind)
+ 
++    // The fields the current list can be sorted by, as on VLC's own pages
++    readonly property var _sortFields: {
++        const alphabetic = { text: qsTr("Alphabetic"), criteria: "title" }
++        const duration = { text: qsTr("Duration"), criteria: "duration" }
++        switch (level ? level.kind : "") {
++        case "videoFolders":
++        case "folderVideos":
++            return [alphabetic, duration]
++        case "songs":
++        case "albumTracks":
++        case "artistTracks":
++        case "genreTracks":
++            return [{ text: qsTr("Title"), criteria: "title" },
++                    { text: qsTr("Album"), criteria: "album_title" },
++                    { text: qsTr("Artist"), criteria: "main_artist" },
++                    duration,
++                    { text: qsTr("Track"), criteria: "track_number" }]
++        case "albums":
++            return [alphabetic, duration,
++                    { text: qsTr("Date"), criteria: "release_year" },
++                    { text: qsTr("Artist"), criteria: "main_artist" }]
++        case "artists":
++            return [{ text: qsTr("Alphabetic"), criteria: "name" },
++                    { text: qsTr("Tracks Count"), criteria: "nb_tracks" }]
++        case "genres":
++            return [{ text: qsTr("Alphabetic"), criteria: "name" }]
++        case "browseTree":
++            return [{ text: qsTr("Alphabetic"), criteria: "name" },
++                    { text: qsTr("File size"), criteria: "fileSizeRaw64" },
++                    { text: qsTr("File modified"), criteria: "fileModified" }]
++        }
++        return []
++    }
++
++    // anything but the first field, A to Z, gets the design's orange dot
++    readonly property bool _sortChanged: !!currentModel && _sortFields.length > 0
++        && ((!!currentModel.sortCriteria && currentModel.sortCriteria !== _sortFields[0].criteria)
++            || currentModel.sortOrder === Qt.DescendingOrder)
++
++    // The first row of a list, as in the design: add a folder to the library,
++    // or name a new playlist
++    readonly property string _addKind: {
++        switch (level ? level.kind : "") {
++        case "videoFolders":
++        case "musicRoot":
++        case "songs":
++        case "albums":
++        case "artists":
++        case "genres":
++            return MainCtx.mediaLibraryAvailable ? "folder" : ""
++        case "playlists":
++            return "playlist"
++        }
++        return ""
++    }
++
++    property bool _namingPlaylist: false
++
++    function _add() {
++        if (_addKind === "folder")
++            VLCSettings.addLibraryFolder()
++        else if (_addKind === "playlist")
++            _namingPlaylist = true
++    }
++
++    function _createPlaylist(name) {
++        _namingPlaylist = false
++        if (name.trim().length > 0)
++            playlists.create(name.trim(), [])
++    }
++
++    onLevelChanged: _namingPlaylist = false
++
+     color: theme.bg.primary
+ 
+     readonly property ColorContext colorContext: ColorContext {
+@@ -376,22 +449,33 @@ Rectangle {
+             }
+         }
+ 
+-        Widgets.IconToolButton {
++        Widgets.SortControl {
+             id: sortButton
+ 
+             anchors.right: searchButton.left
+             anchors.rightMargin: VLCStyle.dp(4, VLCStyle.scale)
+             anchors.verticalCenter: searchButton.verticalCenter
+ 
+-            visible: !!root.currentModel
+-            text: VLCIcons.topbar_sort
+-            description: qsTr("Reverse the order")
++            visible: !!root.currentModel && root._sortFields.length > 0
++            model: root._sortFields
++            sortKey: (root.currentModel && root._sortFields.length > 0)
++                     ? (root.currentModel.sortCriteria || root._sortFields[0].criteria) : undefined
++            sortOrder: root.currentModel ? root.currentModel.sortOrder : undefined
+             font.pixelSize: VLCStyle.icon_normal
+ 
+-            onClicked: {
+-                const model = root.currentModel
+-                model.sortOrder = (model.sortOrder === Qt.AscendingOrder) ? Qt.DescendingOrder
+-                                                                          : Qt.AscendingOrder
++            onSortSelected: (key) => { root.currentModel.sortCriteria = key }
++            onSortOrderSelected: (type) => { root.currentModel.sortOrder = type }
++
++            Rectangle {
++                anchors.right: parent.right
++                anchors.top: parent.top
++                anchors.rightMargin: VLCStyle.dp(1, VLCStyle.scale)
++                anchors.topMargin: VLCStyle.dp(2, VLCStyle.scale)
++                width: VLCStyle.dp(4, VLCStyle.scale)
++                height: width
++                radius: width / 2
++                color: theme.accent
++                visible: root._sortChanged
+             }
+         }
+ 
+@@ -422,6 +506,8 @@ Rectangle {
+ 
+         T.ScrollBar.vertical: Widgets.ScrollBarExt { }
+ 
++        header: root._addKind !== "" ? addRow : null
++
+         delegate: SidePanelLibraryRow {
+             width: list.width
+ 
+@@ -435,7 +521,7 @@ Rectangle {
+         T.Label {
+             anchors.horizontalCenter: parent.horizontalCenter
+             anchors.top: parent.top
+-            anchors.topMargin: VLCStyle.dp(24, VLCStyle.scale)
++            anchors.topMargin: (list.headerItem ? list.headerItem.height : 0) + VLCStyle.dp(24, VLCStyle.scale)
+             visible: list.count === 0
+             text: {
+                 if (list.model && list.model.loading)
+@@ -447,6 +533,69 @@ Rectangle {
+         }
+     }
+ 
++    Component {
++        id: addRow
++
++        Item {
++            width: list.width
++            height: VLCStyle.dp(42, VLCStyle.scale)
++
++            SidePanelLibraryRow {
++                anchors.fill: parent
++                visible: !root._namingPlaylist
++
++                rowData: ({ name: root._addKind === "playlist" ? qsTr("Create playlist") : qsTr("Add"),
++                            icon: VLCIcons.add })
++
++                onClicked: root._add()
++            }
++
++            Rectangle {
++                anchors.fill: parent
++                anchors.leftMargin: VLCStyle.dp(6, VLCStyle.scale)
++                anchors.rightMargin: VLCStyle.dp(6, VLCStyle.scale)
++                anchors.topMargin: VLCStyle.dp(8, VLCStyle.scale)
++                anchors.bottomMargin: VLCStyle.dp(8, VLCStyle.scale)
++                visible: root._namingPlaylist
++                radius: VLCStyle.dp(4, VLCStyle.scale)
++                color: theme.bg.secondary
++
++                TextInput {
++                    id: playlistName
++
++                    anchors.fill: parent
++                    anchors.leftMargin: VLCStyle.dp(8, VLCStyle.scale)
++                    anchors.rightMargin: VLCStyle.dp(8, VLCStyle.scale)
++                    verticalAlignment: TextInput.AlignVCenter
++                    clip: true
++                    selectByMouse: true
++
++                    color: theme.fg.primary
++                    font.pixelSize: VLCStyle.fontSize_normal
++
++                    Accessible.name: qsTr("New playlist name")
++
++                    onVisibleChanged: {
++                        text = ""
++                        if (visible)
++                            forceActiveFocus()
++                    }
++                    onAccepted: root._createPlaylist(text)
++                    Keys.onEscapePressed: root._namingPlaylist = false
++                }
++
++                T.Label {
++                    anchors.fill: playlistName
++                    verticalAlignment: Text.AlignVCenter
++                    visible: playlistName.text.length === 0
++                    text: qsTr("Playlist name, then Enter")
++                    color: windowTheme.fg.secondary
++                    font.pixelSize: VLCStyle.fontSize_normal
++                }
++            }
++        }
++    }
++
+     // Home: the first rows of each list under a title that opens all of it
+     Flickable {
+         id: home
+-- 
+2.45.0.windows.1
+
