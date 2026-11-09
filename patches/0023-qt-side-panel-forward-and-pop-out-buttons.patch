@@ -1,0 +1,173 @@
+From 241d82ace71e4a7367b4788d0d6f1dfca17fa99e Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Mon, 9 Nov 2026 21:14:25 +1030
+Subject: [PATCH] qt: side panel forward and pop-out buttons
+
+The side panel header gets the design's forward arrow, which returns to the levels Back left until a new list is opened, and a pop-out button that opens the same list in the main window (the matching Video, Music, Playlists or Browse page, including an album, artist, genre, playlist or folder). When the main window has no history yet, Home is pushed first so the main window does not replace the page with Home when it is created.
+---
+ .../gui/qt/player/qml/SidePanelLibrary.qml    | 101 ++++++++++++++++--
+ 1 file changed, 94 insertions(+), 7 deletions(-)
+
+diff --git a/modules/gui/qt/player/qml/SidePanelLibrary.qml b/modules/gui/qt/player/qml/SidePanelLibrary.qml
+index 52bee54..0157c1a 100644
+--- a/modules/gui/qt/player/qml/SidePanelLibrary.qml
++++ b/modules/gui/qt/player/qml/SidePanelLibrary.qml
+@@ -24,6 +24,7 @@ import VLC.Style
+ import VLC.Widgets as Widgets
+ import VLC.Dialogs
+ import VLC.Network as Net
++import VLC.Util
+ 
+ // Juxtopposed: the library inside the player side panel (Figma "sidebar"
+ // variants): a compact list with a back button, a breadcrumb, the item count,
+@@ -37,9 +38,12 @@ Rectangle {
+     // "home", "video", "music", "playlists" or "browse"
+     property string section: "video"
+ 
+-    // The path being shown: [{ kind, title, model (browsing only) }]
++    // The path being shown: [{ kind, title, parentId, model (browsing only) }]
+     property var levels: []
+ 
++    // The levels Back left, most recent last, for Forward
++    property var forwardLevels: []
++
+     readonly property var level: levels.length > 0 ? levels[levels.length - 1] : null
+     readonly property bool isBrowseRoot: !!level && level.kind === "browseRoot"
+ 
+@@ -141,6 +145,13 @@ Rectangle {
+         const left = levels
+         _setSectionLevels()
+         left.forEach((l) => { if (l.model) l.model.destroy() })
++        _clearForward()
++    }
++
++    function _clearForward() {
++        const left = forwardLevels
++        forwardLevels = []
++        left.forEach((l) => { if (l.model) l.model.destroy() })
+     }
+ 
+     function _setSectionLevels() {
+@@ -165,19 +176,66 @@ Rectangle {
+ 
+     function push(kind, title, parentId) {
+         _closeSearch()
++        _clearForward()
+         if (parentId !== undefined)
+             _modelFor(kind).parentId = parentId
+-        levels = levels.concat([{ kind: kind, title: title }])
++        levels = levels.concat([{ kind: kind, title: title, parentId: parentId }])
+     }
+ 
+     function back() {
+         _closeSearch()
+         if (levels.length < 2)
+             return
+-        const left = levels[levels.length - 1]
++        // the level stays alive for Forward
++        forwardLevels = forwardLevels.concat([levels[levels.length - 1]])
+         levels = levels.slice(0, -1)
+-        if (left.model)
+-            left.model.destroy()
++    }
++
++    function forward() {
++        _closeSearch()
++        if (forwardLevels.length === 0)
++            return
++        const next = forwardLevels[forwardLevels.length - 1]
++        forwardLevels = forwardLevels.slice(0, -1)
++        if (next.parentId !== undefined)
++            _modelFor(next.kind).parentId = next.parentId
++        levels = levels.concat([next])
++    }
++
++    // The same place in the main window, for the pop-out button
++    function _libraryPage() {
++        const l = level
++        switch (l ? l.kind : "") {
++        case "home": return { path: ["home"] }
++        case "recentVideos":
++        case "videoFolders":
++        case "folderVideos": return { path: ["video"] }
++        case "musicRoot": return { path: ["music"] }
++        case "songs": return { path: ["music", "tracks"] }
++        case "albums":
++        case "albumTracks": return { path: ["music", "albums"] }
++        case "artists": return { path: ["music", "artists"] }
++        case "artistTracks": return { path: ["music", "artists", "albums"], props: { artistId: l.parentId } }
++        case "genres": return { path: ["music", "genres"] }
++        case "genreTracks": return { path: ["music", "genres", "albums"], props: { parentId: l.parentId, genreName: l.title } }
++        case "playlists": return { path: ["music", "playlists"] }
++        case "playlistItems": return { path: ["music", "playlists", "list"], props: { parentId: l.parentId, title: l.title } }
++        case "browseTree": return { path: ["network", "browse"], props: { tree: l.model.tree } }
++        }
++        return { path: ["network"] }
++    }
++
++    function popOut() {
++        const page = _libraryPage()
++        // a main window made with a single history entry replaces it with
++        // Home (MainDisplay), so put Home underneath first
++        if (History.previousEmpty)
++            History.push(["home"])
++        if (page.props)
++            History.push(page.path, page.props)
++        else
++            History.push(page.path)
++        MainCtx.playerView = false
+     }
+ 
+     // A model per folder, like VLC's own browse pages. Make it before closing
+@@ -185,6 +243,7 @@ Rectangle {
+     function _pushTree(title, tree) {
+         const model = browseTreeModel.createObject(root, { tree: tree })
+         _closeSearch()
++        _clearForward()
+         levels = levels.concat([{ kind: "browseTree", title: title, model: model }])
+     }
+ 
+@@ -365,10 +424,38 @@ Rectangle {
+             onClicked: root.back()
+         }
+ 
+-        T.Label {
++        Widgets.IconToolButton {
++            id: forwardButton
++
+             anchors.left: backButton.right
+-            anchors.leftMargin: VLCStyle.dp(8, VLCStyle.scale)
++            anchors.top: parent.top
++
++            text: VLCIcons.back
++            rotation: 180
++            description: qsTr("Forward")
++            font.pixelSize: VLCStyle.icon_normal
++            enabled: root.forwardLevels.length > 0
++
++            onClicked: root.forward()
++        }
++
++        Widgets.IconToolButton {
++            id: popOutButton
++
+             anchors.right: parent.right
++            anchors.top: parent.top
++
++            text: VLCIcons.popout
++            description: qsTr("Open in the library")
++            font.pixelSize: VLCStyle.icon_normal
++
++            onClicked: root.popOut()
++        }
++
++        T.Label {
++            anchors.left: forwardButton.right
++            anchors.leftMargin: VLCStyle.dp(4, VLCStyle.scale)
++            anchors.right: popOutButton.left
+             anchors.verticalCenter: backButton.verticalCenter
+ 
+             // the last two levels, as in the design ("Videos › Shows")
+-- 
+2.45.0.windows.1
+
