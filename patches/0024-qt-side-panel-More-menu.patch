@@ -1,0 +1,137 @@
+From 8a3fbd212beee7b3763c2b1fe624e4b3c649b060 Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Wed, 11 Nov 2026 20:59:13 +1030
+Subject: [PATCH] qt: side panel More menu
+
+The side panel header gets the design's "..." button, a menu that plays, shuffles or adds to the queue every row of the list on screen, in its current sort and filter. Shuffle turns on random playback first, as the library playlist menu does.
+
+The play queue under the side panel library is now hidden while the library is shown, so its buttons can no longer be clicked or found by screen readers underneath.
+---
+ modules/gui/qt/player/qml/Player.qml          | 10 +++
+ .../gui/qt/player/qml/SidePanelLibrary.qml    | 65 ++++++++++++++++++-
+ 2 files changed, 74 insertions(+), 1 deletion(-)
+
+diff --git a/modules/gui/qt/player/qml/Player.qml b/modules/gui/qt/player/qml/Player.qml
+index 7b3af52..370ce29 100644
+--- a/modules/gui/qt/player/qml/Player.qml
++++ b/modules/gui/qt/player/qml/Player.qml
+@@ -1191,6 +1191,8 @@ FocusScope {
+ 
+             // Juxtopposed: the library, over the queue when the rail asks for it
+             Loader {
++                id: sideLibrary
++
+                 parent: playlistView
+ 
+                 anchors.left: sideRail.right
+@@ -1208,6 +1210,14 @@ FocusScope {
+                 }
+             }
+ 
++            // and the queue hidden meanwhile, so that its buttons are neither
++            // clickable nor found by screen readers underneath
++            Binding {
++                target: playlistView.contentItem
++                property: "visible"
++                value: !sideLibrary.active
++            }
++
+             view.fadingEdge.pixelAlignedForDPR: !controlBar.visible
+ 
+             Navigation.parentItem: rootPlayer
+diff --git a/modules/gui/qt/player/qml/SidePanelLibrary.qml b/modules/gui/qt/player/qml/SidePanelLibrary.qml
+index 0157c1a..688cd02 100644
+--- a/modules/gui/qt/player/qml/SidePanelLibrary.qml
++++ b/modules/gui/qt/player/qml/SidePanelLibrary.qml
+@@ -25,6 +25,8 @@ import VLC.Widgets as Widgets
+ import VLC.Dialogs
+ import VLC.Network as Net
+ import VLC.Util
++import VLC.Menus
++import VLC.Playlist
+ 
+ // Juxtopposed: the library inside the player side panel (Figma "sidebar"
+ // variants): a compact list with a back button, a breadcrumb, the item count,
+@@ -225,6 +227,44 @@ Rectangle {
+         return { path: ["network"] }
+     }
+ 
++    // The "..." menu: the design's playlist actions, for every row of the list
++    // on screen (sorted and filtered as shown)
++    readonly property var _moreActions: [
++        { text: qsTr("Play"), icon: "play" },
++        { text: qsTr("Shuffle"), icon: "shuffle" },
++        { text: qsTr("Add to Queue"), icon: "queue" }
++    ]
++
++    function _runMore(index) {
++        const model = currentModel
++        if (!model || list.count === 0)
++            return
++
++        const rows = []
++        for (let i = 0; i < list.count; i++)
++            rows.push(i)
++
++        if (index === 1)
++            MainPlaylistController.random = true
++
++        if (level.kind === "browseTree") {
++            const indexes = rows.map((i) => model.index(i, 0))
++            if (index === 2)
++                model.addToPlaylist(indexes)
++            else
++                model.addAndPlay(indexes)
++            return
++        }
++
++        model.getDataFlat(rows, (items) => {
++            const ids = items.map((item) => item.id)
++            if (index === 2)
++                MediaLib.addToPlaylist(ids)
++            else
++                MediaLib.addAndPlay(ids)
++        })
++    }
++
+     function popOut() {
+         const page = _libraryPage()
+         // a main window made with a single history entry replaces it with
+@@ -452,10 +492,33 @@ Rectangle {
+             onClicked: root.popOut()
+         }
+ 
++        Widgets.IconToolButton {
++            id: moreButton
++
++            anchors.right: popOutButton.left
++            anchors.top: parent.top
++
++            visible: !!root.currentModel
++            enabled: list.count > 0
++            text: VLCIcons.ellipsis
++            description: qsTr("More")
++            font.pixelSize: VLCStyle.icon_normal
++
++            onClicked: moreMenu.popup(mapToGlobal(0, height), root._moreActions)
++
++            StringListMenu {
++                id: moreMenu
++
++                ctx: MainCtx
++
++                onSelected: (index) => root._runMore(index)
++            }
++        }
++
+         T.Label {
+             anchors.left: forwardButton.right
+             anchors.leftMargin: VLCStyle.dp(4, VLCStyle.scale)
+-            anchors.right: popOutButton.left
++            anchors.right: moreButton.left
+             anchors.verticalCenter: backButton.verticalCenter
+ 
+             // the last two levels, as in the design ("Videos › Shows")
+-- 
+2.45.0.windows.1
+
