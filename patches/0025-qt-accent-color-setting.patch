@@ -1,0 +1,190 @@
+From 532ac88fef9b643155ac8c4b299b106a1e894d6b Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Thu, 12 Nov 2026 19:40:52 +1030
+Subject: [PATCH] qt: accent color setting
+
+Settings > General > Appearance gets an accent color row with the design's orange and six other colors. It sets VLC's qt-accent-color option, and the palette now rereads it on request, so the new color applies at once instead of after a restart. The played part of the seek bar is derived from the accent instead of a fixed dark orange.
+---
+ .../qt/dialogs/dialogs/qml/SettingsPages.qml  |  3 +-
+ .../qt/dialogs/dialogs/qml/SettingsRow.qml    | 63 +++++++++++++++++++
+ modules/gui/qt/style/systempalette.cpp        | 25 ++++++--
+ modules/gui/qt/style/systempalette.hpp        |  9 +++
+ 4 files changed, 95 insertions(+), 5 deletions(-)
+
+diff --git a/modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml b/modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml
+index 0804853..bc35858 100644
+--- a/modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml
++++ b/modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml
+@@ -31,7 +31,8 @@ QtObject {
+             icon: VLCIcons.preferences,
+             sections: [
+                 { title: qsTr("Appearance"), rows: [
+-                    { special: "theme", label: qsTr("Theme") }
++                    { special: "theme", label: qsTr("Theme") },
++                    { special: "accent", option: "qt-accent-color", label: qsTr("Accent color") }
+                 ] },
+                 { title: qsTr("Startup"), rows: [
+                     { option: "qt-error-dialogs", label: qsTr("Show confirmation and error dialogs") },
+diff --git a/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml b/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
+index b034600..47a9d8b 100644
+--- a/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
++++ b/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
+@@ -133,6 +133,8 @@ Item {
+             sourceComponent: {
+                 if (root.row.special === "theme")
+                     return themeControl
++                if (root.row.special === "accent")
++                    return accentControl
+                 if (root.row.special === "button")
+                     return buttonControl
+                 if (!root.opt?.name)
+@@ -461,6 +463,67 @@ Item {
+     }
+ 
+     // Dark / Light / System segmented switch for the color scheme
++    // Accent color: the design's orange or one of a few others, applied at once
++    Component {
++        id: accentControl
++
++        Row {
++            spacing: VLCStyle.dp(8, VLCStyle.scale)
++
++            Repeater {
++                model: [
++                    { value: "default", color: "#D37918", text: qsTr("Orange") },
++                    { value: "#E5484D", color: "#E5484D", text: qsTr("Red") },
++                    { value: "#E5487A", color: "#E5487A", text: qsTr("Pink") },
++                    { value: "#9B6BFF", color: "#9B6BFF", text: qsTr("Purple") },
++                    { value: "#3D8BFD", color: "#3D8BFD", text: qsTr("Blue") },
++                    { value: "#2FB36B", color: "#2FB36B", text: qsTr("Green") },
++                    { value: "#E0B321", color: "#E0B321", text: qsTr("Yellow") }
++                ]
++
++                T.AbstractButton {
++                    id: swatch
++
++                    required property var modelData
++
++                    readonly property bool active: {
++                        const current = String(root.opt?.value ?? "default").toLowerCase()
++                        return current === modelData.value.toLowerCase()
++                    }
++
++                    width: VLCStyle.dp(28, VLCStyle.scale)
++                    height: width
++
++                    Accessible.role: Accessible.RadioButton
++                    Accessible.name: modelData.text
++                    Accessible.checked: active
++                    Accessible.onPressAction: swatch.clicked()
++
++                    onClicked: {
++                        root._set(modelData.value)
++                        VLCStyle.palette.reloadAccent()
++                        VLCStyle.darkPalette.reloadAccent()
++                    }
++
++                    background: Rectangle {
++                        radius: VLCStyle.dp(4, VLCStyle.scale)
++                        color: "transparent"
++                        border.width: VLCStyle.dp(2, VLCStyle.scale)
++                        border.color: swatch.active ? viewTheme.fg.primary
++                                                    : (swatch.hovered ? viewTheme.border : "transparent")
++
++                        Rectangle {
++                            anchors.fill: parent
++                            anchors.margins: VLCStyle.dp(4, VLCStyle.scale)
++                            radius: VLCStyle.dp(2, VLCStyle.scale)
++                            color: swatch.modelData.color
++                        }
++                    }
++                }
++            }
++        }
++    }
++
+     Component {
+         id: themeControl
+ 
+diff --git a/modules/gui/qt/style/systempalette.cpp b/modules/gui/qt/style/systempalette.cpp
+index 88ea814..b37bad1 100644
+--- a/modules/gui/qt/style/systempalette.cpp
++++ b/modules/gui/qt/style/systempalette.cpp
+@@ -303,6 +303,18 @@ SystemPalette::SystemPalette(QObject* parent)
+ }
+ 
+ void SystemPalette::componentComplete()
++{
++    readAccent();
++    updatePalette();
++}
++
++void SystemPalette::reloadAccent()
++{
++    readAccent();
++    updatePalette();
++}
++
++void SystemPalette::readAccent()
+ {
+     {
+         assert(m_ctx);
+@@ -311,7 +323,8 @@ void SystemPalette::componentComplete()
+ 
+         if (!strcmp(accentColor, "default"))
+         {
+-            // Use default
++            orange500 = QColor("#D37918");
++            orange800 = QColor("#E08A2E");
+         }
+ #if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+         else if (!strcmp(accentColor, "system"))
+@@ -325,14 +338,18 @@ void SystemPalette::componentComplete()
+ #endif
+         else
+         {
+-            orange500 = QColor(accentColor);
++            const QColor color(accentColor);
++            orange500 = color.isValid() ? color : QColor("#D37918");
+             orange800 = orange500.lighter(150);
+         }
+ 
+         free(accentColor);
+-    }
+ 
+-    updatePalette();
++        // the played part of the seek bar is the accent darkened, as the
++        // design's #371F06 is to its orange
++        juxtBgAccent = QColor::fromRgbF(orange500.redF() * 0.26f, orange500.greenF() * 0.26f,
++                                        orange500.blueF() * 0.26f);
++    }
+ }
+ 
+ ColorSchemeModel::ColorScheme SystemPalette::source() const
+diff --git a/modules/gui/qt/style/systempalette.hpp b/modules/gui/qt/style/systempalette.hpp
+index 788094a..cfd372f 100644
+--- a/modules/gui/qt/style/systempalette.hpp
++++ b/modules/gui/qt/style/systempalette.hpp
+@@ -169,10 +169,19 @@ public:
+     void classBegin() override { }
+     void componentComplete() override;
+ 
++private:
++    void readAccent();
++
++public:
++
+ public slots:
+     void setSource(ColorSchemeModel::ColorScheme source);
+     void setCtx(MainCtx* ctx);
+ 
++    // Juxtopposed: read qt-accent-color again and rebuild the palette, so a
++    // new accent picked in the settings applies at once
++    void reloadAccent();
++
+ 
+ signals:
+     void sourceChanged();
+-- 
+2.45.0.windows.1
+
