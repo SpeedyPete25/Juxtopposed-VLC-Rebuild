@@ -1,0 +1,231 @@
+From 43ab336cd524efdbe4b9869014eaf1eab4f31731 Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Fri, 13 Nov 2026 22:16:37 +1030
+Subject: [PATCH] qt: extensions list in the settings window
+
+Settings > Extensions now lists every installed extension, each with an info icon (description, version and author) and an Open button that runs it, or Close while it runs, as its View menu entry does. VLCSettings loads the extensions on first use and refreshes the list when they change. Add-ons and VLC's plugins stay behind the Manage button, which opens the old dialog.
+---
+ .../qt/dialogs/dialogs/qml/SettingsPages.qml  | 14 +++-
+ .../qt/dialogs/dialogs/qml/SettingsRow.qml    | 14 +++-
+ .../qt/dialogs/preferences/vlc_settings.cpp   | 80 +++++++++++++++++++
+ .../qt/dialogs/preferences/vlc_settings.hpp   | 10 +++
+ 4 files changed, 113 insertions(+), 5 deletions(-)
+
+diff --git a/modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml b/modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml
+index bc35858..a5e32a2 100644
+--- a/modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml
++++ b/modules/gui/qt/dialogs/dialogs/qml/SettingsPages.qml
+@@ -18,6 +18,7 @@
+ import QtQml
+ 
+ import VLC.Style
++import VLC.Dialogs
+ 
+ // Juxtopposed: the pages of the settings window, following the redesign.
+ // Each row names a VLC option (read and written through VLCSettings) with
+@@ -304,9 +305,18 @@ QtObject {
+         {
+             group: qsTr("System"), name: qsTr("Extensions"), title: qsTr("Extensions"),
+             icon: VLCIcons.plugins,
++            // Every installed extension, then the old dialog for add-ons (skins
++            // and the like, from VLC's catalog) and VLC's own plugins
+             sections: [
+-                { title: qsTr("Extensions"), rows: [
+-                    { special: "button", label: qsTr("Extensions, add-ons and plugins"), text: qsTr("Manage"), action: "plugins" }
++                { title: qsTr("Installed"), rows: VLCSettings.extensions.map((ext) => ({
++                    special: "extension", label: ext.title, ext: ext,
++                    info: [ext.description,
++                           [ext.version ? qsTr("Version %1").arg(ext.version) : "",
++                            ext.author ? qsTr("by %1").arg(ext.author) : ""].filter((t) => t).join(" ")]
++                          .filter((t) => t).join("\n\n")
++                })) },
++                { title: qsTr("More"), rows: [
++                    { special: "button", label: qsTr("Add-ons and plugins"), text: qsTr("Manage"), action: "plugins" }
+                 ] }
+             ],
+             advanced: []
+diff --git a/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml b/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
+index 47a9d8b..2dd9041 100644
+--- a/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
++++ b/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
+@@ -107,7 +107,8 @@ Item {
+ 
+                 anchors.verticalCenter: parent.verticalCenter
+ 
+-                visible: !!root.opt?.longText || (!!root.opt?.text && root.opt.text !== root.label)
++                visible: !!root.row.info || !!root.opt?.longText
++                         || (!!root.opt?.text && root.opt.text !== root.label)
+                 text: VLCIcons.info
+                 color: theme.fg.secondary
+                 font.pixelSize: VLCStyle.icon_small * 1.4
+@@ -118,6 +119,8 @@ Item {
+                 T.ToolTip.delay: 0
+                 T.ToolTip.text: {
+                     const parts = []
++                    if (root.row.info)
++                        parts.push(root.row.info)
+                     if (root.opt?.text && root.opt.text !== root.label)
+                         parts.push(root.opt.text)
+                     if (root.opt?.longText)
+@@ -135,7 +138,7 @@ Item {
+                     return themeControl
+                 if (root.row.special === "accent")
+                     return accentControl
+-                if (root.row.special === "button")
++                if (root.row.special === "button" || root.row.special === "extension")
+                     return buttonControl
+                 if (!root.opt?.name)
+                     return null
+@@ -570,10 +573,15 @@ Item {
+         id: buttonControl
+ 
+         FlatButton {
+-            text: root.row.text
++            text: root.row.special === "extension" ? (root.row.ext.active ? qsTr("Close") : qsTr("Open"))
++                                                   : root.row.text
+             accent: !!root.row.accent
+ 
+             onClicked: {
++                if (root.row.special === "extension") {
++                    VLCSettings.runExtension(root.row.ext.name)
++                    return
++                }
+                 switch (root.row.action) {
+                 case "openConfigFolder":
+                     VLCSettings.openConfigFolder()
+diff --git a/modules/gui/qt/dialogs/preferences/vlc_settings.cpp b/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
+index 9d370ee..687d861 100644
+--- a/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
++++ b/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
+@@ -25,6 +25,7 @@
+ #include "dialogs/preferences/vlc_settings.hpp"
+ #include "util/vlchotkeyconverter.hpp"
+ #include "player/player_controller.hpp"
++#include "dialogs/extensions/extensions_manager.hpp"
+ #include "../../../../audio_filter/equalizer_presets.h"
+ 
+ #include <QDesktopServices>
+@@ -37,6 +38,7 @@
+ #include <vlc_actions.h>
+ #include <vlc_configuration.h>
+ #include <vlc_media_library.h>
++#include <vlc_extensions.h>
+ #include <vlc_modules.h>
+ #include <vlc_plugin.h>
+ 
+@@ -224,6 +226,84 @@ QVariantList VLCSettings::coreOptions(const QVariantList &subcategories) const
+     return result;
+ }
+ 
++QVariantList VLCSettings::extensions()
++{
++    ExtensionsManager *em = ExtensionsManager::getInstance(m_intf);
++    if (!m_extensionsHooked)
++    {
++        connect(em, &ExtensionsManager::extensionsUpdated, this, &VLCSettings::extensionsChanged);
++        m_extensionsHooked = true;
++    }
++    if (!em->isLoaded() && !em->cannotLoad())
++        em->loadExtensions();
++
++    QVariantList list;
++    extensions_manager_t *mgr = em->getManager();
++    if (!mgr)
++        return list;
++
++    QVector<extension_t *> found;
++    vlc_mutex_lock(&mgr->lock);
++    extension_t *ext;
++    ARRAY_FOREACH(ext, mgr->extensions)
++    {
++        QString description = qfu(ext->psz_description);
++        if (description.isEmpty())
++            description = qfu(ext->psz_shortdescription);
++        list.append(QVariantMap {
++            { "name", qfu(ext->psz_name) },
++            { "title", qfu(ext->psz_title) },
++            { "description", description },
++            { "author", qfu(ext->psz_author) },
++            { "version", qfu(ext->psz_version) },
++        });
++        found.append(ext);
++    }
++    vlc_mutex_unlock(&mgr->lock);
++
++    // asked outside the lock, as the extensions menu does
++    for (int i = 0; i < found.size(); ++i)
++    {
++        QVariantMap entry = list[i].toMap();
++        entry["active"] = extension_IsActivated(mgr, found[i]);
++        list[i] = entry;
++    }
++    return list;
++}
++
++void VLCSettings::runExtension(const QString &name)
++{
++    ExtensionsManager *em = ExtensionsManager::getInstance(m_intf);
++    extensions_manager_t *mgr = em->getManager();
++    if (!mgr)
++        return;
++
++    extension_t *target = nullptr;
++    vlc_mutex_lock(&mgr->lock);
++    extension_t *ext;
++    ARRAY_FOREACH(ext, mgr->extensions)
++    {
++        if (qfu(ext->psz_name) == name)
++        {
++            target = ext;
++            break;
++        }
++    }
++    vlc_mutex_unlock(&mgr->lock);
++    if (!target)
++        return;
++
++    // what the View menu entry of an extension does
++    if (extension_TriggerOnly(mgr, target))
++        extension_Trigger(mgr, target);
++    else if (!extension_IsActivated(mgr, target))
++        extension_Activate(mgr, target);
++    else
++        extension_Deactivate(mgr, target);
++
++    emit extensionsChanged();
++}
++
+ QString VLCSettings::addLibraryFolder()
+ {
+     vlc_medialibrary_t *ml = vlc_ml_instance_get(m_intf);
+diff --git a/modules/gui/qt/dialogs/preferences/vlc_settings.hpp b/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
+index 3007df6..aa9c968 100644
+--- a/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
++++ b/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
+@@ -77,13 +77,23 @@ public:
+     Q_INVOKABLE QVariantMap applyEqualizerPreset(const QString &preset);
+ 
+     Q_INVOKABLE void resetAll();
++
++    // Installed Lua extensions, loaded on first use:
++    // [{ name, title, description, author, version, active }]
++    Q_PROPERTY(QVariantList extensions READ extensions NOTIFY extensionsChanged FINAL)
++    QVariantList extensions();
++
++    // Runs an extension, or closes it when it is already running
++    Q_INVOKABLE void runExtension(const QString &name);
+     Q_INVOKABLE void openConfigFolder() const;
+ 
+ signals:
++    void extensionsChanged();
+     // Emitted when every option may have changed (reset)
+     void reset();
+ 
+ private:
++    bool m_extensionsHooked = false;
+     void save();
+ 
+     qt_intf_t *m_intf;
+-- 
+2.45.0.windows.1
+

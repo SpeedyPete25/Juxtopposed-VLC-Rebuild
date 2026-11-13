@@ -69,7 +69,8 @@ orange progress line inside the thumbnail once started), library side bar as
 an inset rounded card on a single dark background, settings window rebuilt in
 QML (13 categories, plain-language rows over VLC's options, info icons, search,
 advanced options per category, an accent color picker that recolors the
-interface at once; the classic dialog stays reachable),
+interface at once, an Extensions page listing the installed extensions with
+an Open button each; the classic dialog stays reachable),
 in-player quick settings sidebar (Playback, Video, Audio and Subtitles tabs
 with live speed, delay, track, zoom, crop and deinterlacing controls),
 keyboard shortcuts dialog (grouped hotkeys and global hotkeys, search by
@@ -98,9 +99,10 @@ Fixes to VLC itself: choice lists (such as the audio stereo mode) keep their
 labels when the audio output restarts, instead of showing raw values like "1";
 creating an empty playlist no longer trips an assertion.
 
-Not yet: the side panel's list/grid switch, settings extras
-(extensions list; an interface language setting is not possible
-since VLC 4 always follows the Windows display language),
+Not yet: the side panel's list/grid switch, VLC's plugins in the advanced
+settings (they are still in the old add-ons dialog; an interface language
+setting is not possible since VLC 4 always follows the Windows display
+language),
 subtitle presets and timeline, onboarding, menu entries VLC has no action for
 (Favorite and Export Playlist for playlists, Go to Source, Add/Edit Subtitle
 and Audio Tracks, Resync), dialogs, light theme, library icons.
