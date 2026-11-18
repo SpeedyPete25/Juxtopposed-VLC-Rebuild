@@ -1,0 +1,121 @@
+From 13bd785be9d7e2357fd69c353366efdb27b168bd Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Wed, 18 Nov 2026 19:38:11 +1030
+Subject: [PATCH] qt: settings rows in narrow windows
+
+Settings row labels no longer shrink to nothing in a narrow window. A label now takes the space its control leaves, and a control takes at most about half of a narrow row (never under 120 px) instead of always keeping 320 px. The accent swatches shrink to fit, down to 20 px. A full-size window looks the same as before.
+---
+ .../qt/dialogs/dialogs/qml/SettingsRow.qml    | 33 ++++++++++++++-----
+ 1 file changed, 24 insertions(+), 9 deletions(-)
+
+diff --git a/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml b/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
+index 2dd9041..7e57044 100644
+--- a/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
++++ b/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
+@@ -42,6 +42,12 @@ Item {
+     // Narrower in the player's quick settings sidebar
+     property real controlWidth: VLCStyle.dp(320, VLCStyle.scale)
+ 
++    // what the control gets: at most about half of a narrow row, so that the
++    // label keeps the rest instead of shrinking to nothing
++    readonly property real _controlWidth: width > 0
++        ? Math.max(VLCStyle.dp(120, VLCStyle.scale), Math.min(controlWidth, width * 0.55))
++        : controlWidth
++
+     // Rows for options missing from this VLC build are left out
+     visible: special || !!opt?.name
+ 
+@@ -84,7 +90,12 @@ Item {
+         spacing: VLCStyle.dp(16, VLCStyle.scale)
+ 
+         Row {
++            id: labelRow
++
++            // takes what the control leaves (no preferred width of its own,
++            // which would depend on the label it sizes)
+             Layout.fillWidth: true
++            Layout.preferredWidth: 0
+             Layout.alignment: Qt.AlignVCenter
+ 
+             spacing: VLCStyle.dp(8, VLCStyle.scale)
+@@ -93,7 +104,8 @@ Item {
+                 id: labelText
+ 
+                 anchors.verticalCenter: parent.verticalCenter
+-                width: Math.min(implicitWidth, root.width - root.controlWidth - VLCStyle.dp(48, VLCStyle.scale))
++                width: Math.max(0, Math.min(implicitWidth, labelRow.width
++                                            - (infoIcon.visible ? infoIcon.width + labelRow.spacing : 0)))
+ 
+                 text: root.label
+                 color: viewTheme.fg.primary
+@@ -221,7 +233,7 @@ Item {
+         T.ComboBox {
+             id: combo
+ 
+-            implicitWidth: root.controlWidth
++            implicitWidth: root._controlWidth
+             implicitHeight: VLCStyle.dp(36, VLCStyle.scale)
+ 
+             model: root.choices
+@@ -318,7 +330,7 @@ Item {
+         id: sliderControl
+ 
+         RowLayout {
+-            implicitWidth: root.controlWidth
++            implicitWidth: root._controlWidth
+             width: implicitWidth
+             spacing: VLCStyle.dp(12, VLCStyle.scale)
+ 
+@@ -326,8 +338,8 @@ Item {
+                 id: slider
+ 
+                 Layout.fillWidth: true
+-                Layout.preferredWidth: root.controlWidth - VLCStyle.dp(60, VLCStyle.scale)
+-                implicitWidth: root.controlWidth - VLCStyle.dp(60, VLCStyle.scale)
++                Layout.preferredWidth: root._controlWidth - VLCStyle.dp(60, VLCStyle.scale)
++                implicitWidth: root._controlWidth - VLCStyle.dp(60, VLCStyle.scale)
+                 implicitHeight: VLCStyle.dp(28, VLCStyle.scale)
+ 
+                 from: root.opt.min
+@@ -402,7 +414,7 @@ Item {
+         id: textControl
+ 
+         FieldBox {
+-            implicitWidth: root.controlWidth
++            implicitWidth: root._controlWidth
+ 
+             text: String(root.opt.value ?? "")
+             echoMode: root.opt.type === "password" ? TextInput.Password : TextInput.Normal
+@@ -416,7 +428,7 @@ Item {
+         id: pathControl
+ 
+         RowLayout {
+-            implicitWidth: root.controlWidth
++            implicitWidth: root._controlWidth
+             width: implicitWidth
+             spacing: VLCStyle.dp(10, VLCStyle.scale)
+ 
+@@ -494,7 +506,10 @@ Item {
+                         return current === modelData.value.toLowerCase()
+                     }
+ 
+-                    width: VLCStyle.dp(28, VLCStyle.scale)
++                    // seven of them fit the control, however narrow
++                    width: Math.max(VLCStyle.dp(20, VLCStyle.scale),
++                                    Math.min(VLCStyle.dp(28, VLCStyle.scale),
++                                             (root._controlWidth - 6 * VLCStyle.dp(8, VLCStyle.scale)) / 7))
+                     height: width
+ 
+                     Accessible.role: Accessible.RadioButton
+@@ -546,7 +561,7 @@ Item {
+ 
+                     readonly property bool active: MainCtx.colorScheme.scheme === modelData.scheme
+ 
+-                    width: (root.controlWidth - 2 * VLCStyle.dp(2, VLCStyle.scale)) / 3
++                    width: (root._controlWidth - 2 * VLCStyle.dp(2, VLCStyle.scale)) / 3
+                     height: VLCStyle.dp(32, VLCStyle.scale)
+ 
+                     onClicked: MainCtx.colorScheme.setScheme(modelData.scheme)
+-- 
+2.45.0.windows.1
+
