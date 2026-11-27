@@ -1,0 +1,788 @@
+From cdbeaad79974d0698bd34f52c9a03a5b80eb6fce Mon Sep 17 00:00:00 2001
+From: Mitch Johnston <mitch.johnston25@gmail.com>
+Date: Fri, 27 Nov 2026 21:07:20 +1030
+Subject: [PATCH] qt: onboarding in place of the first run wizard
+
+First run now opens the design's onboarding in the main window instead of VLC's wizard: a welcome with a media folder for the library (the user's Videos folder by default, with Browse), the theme and accent color applied as they are picked, and the basic keyboard shortcuts drawn as keycaps from VLC's actual hotkeys. Finish adds the folder to the media library and turns off the first run; the metadata network access question the old wizard asked is left to Settings > Privacy. The accent swatches in Settings now use the same nine colors as the design's onboarding.
+---
+ modules/gui/qt/Makefile.am                    |   1 +
+ .../gui/qt/dialogs/dialogs/qml/Onboarding.qml | 553 ++++++++++++++++++
+ .../qt/dialogs/dialogs/qml/SettingsRow.qml    |  20 +-
+ modules/gui/qt/dialogs/dialogs_provider.cpp   |   5 +
+ modules/gui/qt/dialogs/dialogs_provider.hpp   |   2 +
+ .../qt/dialogs/preferences/vlc_settings.cpp   |  31 +
+ .../qt/dialogs/preferences/vlc_settings.hpp   |   7 +
+ .../qt/maininterface/qml/MainInterface.qml    |  29 +
+ modules/gui/qt/meson.build                    |   1 +
+ 9 files changed, 640 insertions(+), 9 deletions(-)
+ create mode 100644 modules/gui/qt/dialogs/dialogs/qml/Onboarding.qml
+
+diff --git a/modules/gui/qt/Makefile.am b/modules/gui/qt/Makefile.am
+index 4a3a817..61955cf 100644
+--- a/modules/gui/qt/Makefile.am
++++ b/modules/gui/qt/Makefile.am
+@@ -1077,6 +1077,7 @@ libqml_module_dialogs_a_QML = \
+ 	dialogs/dialogs/qml/SettingsPages.qml \
+ 	dialogs/dialogs/qml/SettingsRow.qml \
+ 	dialogs/dialogs/qml/HotkeysWindow.qml \
++	dialogs/dialogs/qml/Onboarding.qml \
+ 	dialogs/dialogs/qml/SettingsWindow.qml \
+ 	dialogs/dialogs/qml/WindowDialog.qml \
+ 	dialogs/toolbar/qml/EditorDNDDelegate.qml \
+diff --git a/modules/gui/qt/dialogs/dialogs/qml/Onboarding.qml b/modules/gui/qt/dialogs/dialogs/qml/Onboarding.qml
+new file mode 100644
+index 0000000..ed05f9d
+--- /dev/null
++++ b/modules/gui/qt/dialogs/dialogs/qml/Onboarding.qml
+@@ -0,0 +1,553 @@
++/*****************************************************************************
++ * Copyright (C) 2026 VLC authors and VideoLAN
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * ( at your option ) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
++ *****************************************************************************/
++import QtQuick
++import QtQuick.Layouts
++import QtQuick.Templates as T
++
++import VLC.MainInterface
++import VLC.Style
++import VLC.Widgets as Widgets
++import VLC.Dialogs
++
++// Juxtopposed: the first run (Figma "Onboarding"): a welcome with a media
++// folder for the library, the theme and accent color, then the basic keyboard
++// shortcuts. It replaces VLC's first run wizard.
++FocusScope {
++    id: root
++
++    signal closed()
++
++    property int step: 0
++    property string mediaFolder: VLCSettings.defaultMediaFolder()
++
++    // The design's accent colors; the first is VLC's own orange ("default")
++    readonly property var accents: [
++        { value: "default", color: "#D37918", text: qsTr("Orange") },
++        { value: "#782F20", color: "#782F20", text: qsTr("Red") },
++        { value: "#695619", color: "#695619", text: qsTr("Olive") },
++        { value: "#145821", color: "#145821", text: qsTr("Green") },
++        { value: "#135C71", color: "#135C71", text: qsTr("Teal") },
++        { value: "#133671", color: "#133671", text: qsTr("Blue") },
++        { value: "#4E2887", color: "#4E2887", text: qsTr("Purple") },
++        { value: "#7F3061", color: "#7F3061", text: qsTr("Plum") },
++        { value: "#5F5F5F", color: "#5F5F5F", text: qsTr("Gray") }
++    ]
++
++    property string accent: String(VLCSettings.option("qt-accent-color").value ?? "default")
++
++    // [label, [hotkey option names]] as in the design; keys are the ones set
++    // in VLC (the queue toggle is fixed in the interface)
++    readonly property var shortcuts: [
++        [qsTr("Play / Pause"), ["key-play-pause"]],
++        [qsTr("Seek Backward / Forward"), ["key-jump-extrashort", "key-jump+extrashort"]],
++        [qsTr("Previous / Next Item"), ["key-prev", "key-next"]],
++        [qsTr("Previous / Next Frame"), ["key-frame-previous", "key-frame-next"]],
++        [qsTr("Cycle Subtitle Track"), ["key-subtitle-track"]],
++        [qsTr("Cycle Audio Track"), ["key-audio-track"]],
++        [qsTr("Toggle Fullscreen"), ["key-toggle-fullscreen"]],
++        [qsTr("Increase / Decrease Volume"), ["key-vol-up", "key-vol-down"]],
++        [qsTr("Show / Hide Queue"), ["Ctrl+L"]],
++        [qsTr("Take a Snapshot"), ["key-snapshot"]],
++        [qsTr("Record"), ["key-record"]]
++    ]
++
++    readonly property var _hotkeys: {
++        const map = {}
++        VLCSettings.hotkeys().forEach((h) => { map[h.name] = h.value })
++        return map
++    }
++
++    // "Shift+Left\tMedia Prev" -> ["SHIFT", "←"]
++    function _caps(name) {
++        const value = name.startsWith("key-") ? (_hotkeys[name] ?? "") : name
++        const first = value.split("\t")[0]
++        if (first.length === 0 || first === "Unset")
++            return ["—"]
++        const names = { "Left": "←", "Right": "→", "Up": "↑", "Down": "↓",
++                        "Shift": "SHIFT", "Ctrl": "CTRL", "Alt": "ALT", "Command": "CMD" }
++        // a trailing "+" is the plus key itself
++        const parts = first.endsWith("++") ? first.slice(0, -2).split("+").concat(["+"])
++                                           : first.split("+")
++        return parts.map((p) => names[p] ?? (p.length === 1 ? p.toUpperCase() : p))
++    }
++
++    function setAccent(value) {
++        accent = value
++        VLCSettings.setValue("qt-accent-color", value)
++        VLCStyle.palette.reloadAccent()
++        VLCStyle.darkPalette.reloadAccent()
++    }
++
++    function finish() {
++        VLCSettings.finishOnboarding(mediaFolder.trim())
++        root.closed()
++    }
++
++    focus: true
++
++    Keys.onEscapePressed: root.finish()
++
++    ColorContext { id: theme; colorSet: ColorContext.Window }
++    ColorContext { id: viewTheme; colorSet: ColorContext.View }
++    ColorContext { id: fieldTheme; colorSet: ColorContext.Slider }
++    ColorContext { id: accentTheme; colorSet: ColorContext.ButtonAccent }
++
++    // the window behind, dimmed; clicks stay here
++    Rectangle {
++        anchors.fill: parent
++        color: Qt.rgba(0, 0, 0, 0.6)
++
++        MouseArea {
++            anchors.fill: parent
++            acceptedButtons: Qt.AllButtons
++            hoverEnabled: true
++            onWheel: (wheel) => wheel.accepted = true
++        }
++    }
++
++    Rectangle {
++        id: card
++
++        anchors.centerIn: parent
++        width: Math.min(VLCStyle.dp(1090, VLCStyle.scale), parent.width - VLCStyle.dp(32, VLCStyle.scale))
++        height: Math.min(VLCStyle.dp(759, VLCStyle.scale), parent.height - VLCStyle.dp(32, VLCStyle.scale))
++
++        // the design's card: #0E0E0E in a #272727 edge
++        radius: VLCStyle.dp(12, VLCStyle.scale)
++        color: VLCStyle.palette.juxtBgB1
++        border.width: VLCStyle.dp(2, VLCStyle.scale)
++        border.color: VLCStyle.palette.darkGrey500
++
++        readonly property real pad: Math.min(VLCStyle.dp(64, VLCStyle.scale), width * 0.06)
++
++        // 1. Welcome
++        ColumnLayout {
++            anchors.centerIn: parent
++            anchors.verticalCenterOffset: -VLCStyle.dp(24, VLCStyle.scale)
++            width: Math.min(VLCStyle.dp(560, VLCStyle.scale), card.width - 2 * card.pad)
++
++            visible: root.step === 0
++            spacing: VLCStyle.dp(16, VLCStyle.scale)
++
++            Image {
++                Layout.alignment: Qt.AlignHCenter
++                Layout.preferredWidth: VLCStyle.dp(110, VLCStyle.scale)
++                Layout.preferredHeight: VLCStyle.dp(130, VLCStyle.scale)
++                source: "qrc:///misc/cone.svg"
++                sourceSize: Qt.size(width * 2, height * 2)
++                fillMode: Image.PreserveAspectFit
++            }
++
++            T.Label {
++                Layout.alignment: Qt.AlignHCenter
++                Layout.topMargin: VLCStyle.dp(16, VLCStyle.scale)
++                text: qsTr("Welcome to VLC!")
++                color: viewTheme.fg.primary
++                font.pixelSize: VLCStyle.dp(30, VLCStyle.scale)
++            }
++
++            T.Label {
++                Layout.fillWidth: true
++                Layout.topMargin: VLCStyle.dp(16, VLCStyle.scale)
++                text: qsTr("VLC is a free and open source cross-platform multimedia player and framework that plays most multimedia files as well as DVDs, Audio CDs, VCDs, and various streaming protocols.")
++                wrapMode: Text.WordWrap
++                lineHeight: 1.4
++                color: theme.fg.secondary
++                font.pixelSize: VLCStyle.fontSize_large
++            }
++
++            T.Label {
++                Layout.topMargin: VLCStyle.dp(32, VLCStyle.scale)
++                visible: MainCtx.mediaLibraryAvailable
++                text: qsTr("Choose a Media Folder to get started with")
++                color: theme.fg.secondary
++                font.pixelSize: VLCStyle.fontSize_normal
++            }
++
++            RowLayout {
++                Layout.fillWidth: true
++                visible: MainCtx.mediaLibraryAvailable
++                spacing: VLCStyle.dp(10, VLCStyle.scale)
++
++                Rectangle {
++                    Layout.fillWidth: true
++                    implicitHeight: VLCStyle.dp(34, VLCStyle.scale)
++                    radius: VLCStyle.dp(4, VLCStyle.scale)
++                    color: VLCStyle.palette.juxtBgB2
++                    border.width: VLCStyle.border
++                    border.color: VLCStyle.palette.juxtBgA4
++
++                    TextInput {
++                        anchors.fill: parent
++                        anchors.leftMargin: VLCStyle.dp(12, VLCStyle.scale)
++                        anchors.rightMargin: VLCStyle.dp(12, VLCStyle.scale)
++                        verticalAlignment: TextInput.AlignVCenter
++                        clip: true
++                        selectByMouse: true
++                        text: root.mediaFolder
++                        color: viewTheme.fg.primary
++                        font.pixelSize: VLCStyle.fontSize_large
++
++                        Accessible.name: qsTr("Media folder")
++
++                        onTextEdited: root.mediaFolder = text
++                    }
++                }
++
++                OnboardingButton {
++                    text: qsTr("Browse")
++                    onClicked: {
++                        const path = VLCSettings.chooseFolder(root.mediaFolder)
++                        if (path.length > 0)
++                            root.mediaFolder = path
++                    }
++                }
++            }
++        }
++
++        // 2. Theme and color
++        Item {
++            anchors.fill: parent
++            visible: root.step === 1
++
++            T.Label {
++                anchors.horizontalCenter: parent.horizontalCenter
++                anchors.bottom: tiles.top
++                anchors.bottomMargin: VLCStyle.dp(56, VLCStyle.scale)
++                text: qsTr("Select your preferred theme and color.")
++                color: theme.fg.secondary
++                font.pixelSize: VLCStyle.dp(24, VLCStyle.scale)
++            }
++
++            Row {
++                id: tiles
++
++                anchors.centerIn: parent
++                anchors.verticalCenterOffset: -VLCStyle.dp(40, VLCStyle.scale)
++                spacing: VLCStyle.dp(44, VLCStyle.scale)
++
++                Repeater {
++                    // ColorSchemeModel.ColorScheme: System = 0, Day = 1, Night = 2
++                    model: [
++                        { scheme: 1, text: qsTr("Light") },
++                        { scheme: 2, text: qsTr("Dark") },
++                        { scheme: 0, text: qsTr("System") }
++                    ]
++
++                    T.AbstractButton {
++                        id: tile
++
++                        required property var modelData
++
++                        readonly property bool active: MainCtx.colorScheme.scheme === modelData.scheme
++
++                        width: VLCStyle.dp(112, VLCStyle.scale)
++                        height: width + VLCStyle.dp(44, VLCStyle.scale)
++
++                        text: modelData.text
++
++                        Accessible.role: Accessible.RadioButton
++                        Accessible.name: text
++                        Accessible.checked: active
++                        Accessible.onPressAction: tile.clicked()
++
++                        onClicked: MainCtx.colorScheme.setScheme(modelData.scheme)
++
++                        contentItem: Item {
++                            Rectangle {
++                                id: frame
++
++                                width: tile.width
++                                height: width
++                                radius: VLCStyle.dp(12, VLCStyle.scale)
++                                color: "transparent"
++                                border.width: VLCStyle.dp(3, VLCStyle.scale)
++                                border.color: tile.active ? theme.accent : "transparent"
++
++                                Rectangle {
++                                    id: swatch
++
++                                    anchors.fill: parent
++                                    anchors.margins: VLCStyle.dp(10, VLCStyle.scale)
++                                    radius: VLCStyle.dp(8, VLCStyle.scale)
++                                    clip: true
++                                    color: tile.modelData.scheme === 1 ? "#B5B5B5" : "#232323"
++
++                                    // System: half dark, half light, cut diagonally
++                                    Rectangle {
++                                        visible: tile.modelData.scheme === 0
++                                        width: swatch.width
++                                        height: swatch.height * 2
++                                        x: swatch.width * 0.6
++                                        y: -swatch.height / 2
++                                        rotation: 20
++                                        transformOrigin: Item.Left
++                                        color: "#B5B5B5"
++                                    }
++                                }
++                            }
++
++                            T.Label {
++                                anchors.horizontalCenter: frame.horizontalCenter
++                                anchors.bottom: parent.bottom
++                                text: tile.text
++                                color: theme.fg.secondary
++                                font.pixelSize: VLCStyle.fontSize_large
++                            }
++                        }
++                    }
++                }
++            }
++
++            Row {
++                anchors.left: parent.left
++                anchors.leftMargin: card.pad
++                // level with the Back / Next buttons (not a sibling, so no anchor to them)
++                anchors.verticalCenter: parent.bottom
++                anchors.verticalCenterOffset: -(navRow.anchors.bottomMargin + navRow.height / 2)
++                spacing: VLCStyle.dp(30, VLCStyle.scale)
++
++                Repeater {
++                    model: root.accents
++
++                    T.AbstractButton {
++                        id: dot
++
++                        required property var modelData
++
++                        readonly property bool active: root.accent.toLowerCase() === modelData.value.toLowerCase()
++
++                        width: VLCStyle.dp(44, VLCStyle.scale)
++                        height: width
++
++                        Accessible.role: Accessible.RadioButton
++                        Accessible.name: modelData.text
++                        Accessible.checked: active
++                        Accessible.onPressAction: dot.clicked()
++
++                        onClicked: root.setAccent(modelData.value)
++
++                        background: Rectangle {
++                            radius: width / 2
++                            color: "transparent"
++                            border.width: VLCStyle.dp(3, VLCStyle.scale)
++                            border.color: dot.active ? Qt.darker(dot.modelData.color, 1.6)
++                                                     : (dot.hovered ? viewTheme.border : "transparent")
++
++                            Rectangle {
++                                anchors.centerIn: parent
++                                width: VLCStyle.dp(32, VLCStyle.scale)
++                                height: width
++                                radius: width / 2
++                                color: dot.modelData.color
++                            }
++                        }
++                    }
++                }
++            }
++        }
++
++        // 3. Keyboard shortcuts
++        Item {
++            anchors.fill: parent
++            visible: root.step === 2
++
++            T.Label {
++                id: shortcutsTitle
++
++                anchors.horizontalCenter: parent.horizontalCenter
++                anchors.top: parent.top
++                anchors.topMargin: VLCStyle.dp(64, VLCStyle.scale)
++                text: qsTr("Learn the basic keyboard shortcuts.")
++                color: theme.fg.secondary
++                font.pixelSize: VLCStyle.dp(24, VLCStyle.scale)
++            }
++
++            GridLayout {
++                anchors.left: parent.left
++                anchors.right: parent.right
++                anchors.top: shortcutsTitle.bottom
++                anchors.leftMargin: card.pad
++                anchors.rightMargin: card.pad
++                anchors.topMargin: VLCStyle.dp(48, VLCStyle.scale)
++
++                // filled column by column, as in the design
++                flow: GridLayout.TopToBottom
++                rows: 6
++                rowSpacing: VLCStyle.dp(30, VLCStyle.scale)
++                columnSpacing: VLCStyle.dp(40, VLCStyle.scale)
++
++                Repeater {
++                    model: root.shortcuts
++
++                    RowLayout {
++                        id: entry
++
++                        required property var modelData
++
++                        Layout.fillWidth: true
++                        Layout.preferredWidth: 1
++                        spacing: VLCStyle.dp(16, VLCStyle.scale)
++
++                        T.Label {
++                            Layout.preferredWidth: VLCStyle.dp(210, VLCStyle.scale)
++                            text: modelData[0]
++                            elide: Text.ElideRight
++                            color: theme.fg.secondary
++                            font.pixelSize: VLCStyle.fontSize_large
++                        }
++
++                        Row {
++                            Layout.fillWidth: true
++                            spacing: VLCStyle.dp(10, VLCStyle.scale)
++
++                            Repeater {
++                                model: entry.modelData[1]
++
++                                Row {
++                                    id: combo
++
++                                    required property var modelData
++                                    required property int index
++
++                                    spacing: VLCStyle.dp(4, VLCStyle.scale)
++
++                                    T.Label {
++                                        anchors.verticalCenter: parent.verticalCenter
++                                        visible: combo.index > 0
++                                        text: "/"
++                                        rightPadding: VLCStyle.dp(6, VLCStyle.scale)
++                                        color: theme.fg.secondary
++                                        font.pixelSize: VLCStyle.fontSize_large
++                                    }
++
++                                    Repeater {
++                                        model: root._caps(combo.modelData)
++
++                                        KeyCap {
++                                            required property string modelData
++                                            text: modelData
++                                        }
++                                    }
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++
++            T.Label {
++                anchors.left: parent.left
++                anchors.leftMargin: card.pad
++                // level with the Back / Next buttons (not a sibling, so no anchor to them)
++                anchors.verticalCenter: parent.bottom
++                anchors.verticalCenterOffset: -(navRow.anchors.bottomMargin + navRow.height / 2)
++                text: qsTr("Find the full list in the menu.")
++                color: theme.fg.secondary
++                font.pixelSize: VLCStyle.fontSize_large
++            }
++        }
++
++        Row {
++            id: navRow
++
++            anchors.right: parent.right
++            anchors.bottom: parent.bottom
++            anchors.rightMargin: card.pad
++            anchors.bottomMargin: VLCStyle.dp(54, VLCStyle.scale)
++            spacing: VLCStyle.dp(8, VLCStyle.scale)
++
++            OnboardingButton {
++                visible: root.step > 0
++                text: qsTr("Back")
++                onClicked: root.step -= 1
++            }
++
++            OnboardingButton {
++                accent: true
++                text: root.step < 2 ? qsTr("Next") : qsTr("Finish")
++                onClicked: {
++                    if (root.step < 2)
++                        root.step += 1
++                    else
++                        root.finish()
++                }
++            }
++        }
++    }
++
++    component OnboardingButton: T.AbstractButton {
++        id: button
++
++        property bool accent: false
++
++        ColorContext { id: btView; colorSet: ColorContext.View }
++        ColorContext { id: btAccent; colorSet: ColorContext.ButtonAccent }
++
++        implicitWidth: Math.max(VLCStyle.dp(100, VLCStyle.scale), buttonLabel.implicitWidth + VLCStyle.dp(32, VLCStyle.scale))
++        implicitHeight: VLCStyle.dp(34, VLCStyle.scale)
++
++        background: Rectangle {
++            radius: VLCStyle.dp(4, VLCStyle.scale)
++            color: button.accent ? btAccent.bg.primary : VLCStyle.palette.juxtBgA3
++            opacity: button.hovered ? 0.85 : 1.0
++        }
++
++        contentItem: T.Label {
++            id: buttonLabel
++
++            horizontalAlignment: Text.AlignHCenter
++            verticalAlignment: Text.AlignVCenter
++            text: button.text
++            color: button.accent ? btAccent.fg.primary : btView.fg.secondary
++            font.pixelSize: VLCStyle.fontSize_large
++            font.weight: Font.DemiBold
++        }
++    }
++
++    // A key drawn as in the design: a dark cap with a thicker lower edge
++    component KeyCap: Rectangle {
++        id: cap
++
++        property alias text: capLabel.text
++
++        ColorContext { id: capView; colorSet: ColorContext.View }
++
++        width: Math.max(VLCStyle.dp(42, VLCStyle.scale), capLabel.implicitWidth + VLCStyle.dp(28, VLCStyle.scale))
++        height: VLCStyle.dp(44, VLCStyle.scale)
++        radius: VLCStyle.dp(6, VLCStyle.scale)
++        color: "#0A0A0A"
++
++        Rectangle {
++            anchors.fill: parent
++            anchors.bottomMargin: VLCStyle.dp(4, VLCStyle.scale)
++            radius: cap.radius
++            color: "#1E1E1E"
++            border.width: VLCStyle.border
++            border.color: "#2E2E2E"
++
++            T.Label {
++                id: capLabel
++
++                anchors.centerIn: parent
++                color: capView.fg.primary
++                font.pixelSize: VLCStyle.fontSize_large
++            }
++        }
++    }
++}
+diff --git a/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml b/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
+index 7e57044..669f3de 100644
+--- a/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
++++ b/modules/gui/qt/dialogs/dialogs/qml/SettingsRow.qml
+@@ -478,7 +478,7 @@ Item {
+     }
+ 
+     // Dark / Light / System segmented switch for the color scheme
+-    // Accent color: the design's orange or one of a few others, applied at once
++    // Accent color: the design's nine (as in the onboarding), applied at once
+     Component {
+         id: accentControl
+ 
+@@ -488,12 +488,14 @@ Item {
+             Repeater {
+                 model: [
+                     { value: "default", color: "#D37918", text: qsTr("Orange") },
+-                    { value: "#E5484D", color: "#E5484D", text: qsTr("Red") },
+-                    { value: "#E5487A", color: "#E5487A", text: qsTr("Pink") },
+-                    { value: "#9B6BFF", color: "#9B6BFF", text: qsTr("Purple") },
+-                    { value: "#3D8BFD", color: "#3D8BFD", text: qsTr("Blue") },
+-                    { value: "#2FB36B", color: "#2FB36B", text: qsTr("Green") },
+-                    { value: "#E0B321", color: "#E0B321", text: qsTr("Yellow") }
++                    { value: "#782F20", color: "#782F20", text: qsTr("Red") },
++                    { value: "#695619", color: "#695619", text: qsTr("Olive") },
++                    { value: "#145821", color: "#145821", text: qsTr("Green") },
++                    { value: "#135C71", color: "#135C71", text: qsTr("Teal") },
++                    { value: "#133671", color: "#133671", text: qsTr("Blue") },
++                    { value: "#4E2887", color: "#4E2887", text: qsTr("Purple") },
++                    { value: "#7F3061", color: "#7F3061", text: qsTr("Plum") },
++                    { value: "#5F5F5F", color: "#5F5F5F", text: qsTr("Gray") }
+                 ]
+ 
+                 T.AbstractButton {
+@@ -506,10 +508,10 @@ Item {
+                         return current === modelData.value.toLowerCase()
+                     }
+ 
+-                    // seven of them fit the control, however narrow
++                    // all nine fit the control, however narrow
+                     width: Math.max(VLCStyle.dp(20, VLCStyle.scale),
+                                     Math.min(VLCStyle.dp(28, VLCStyle.scale),
+-                                             (root._controlWidth - 6 * VLCStyle.dp(8, VLCStyle.scale)) / 7))
++                                             (root._controlWidth - 8 * VLCStyle.dp(8, VLCStyle.scale)) / 9))
+                     height: width
+ 
+                     Accessible.role: Accessible.RadioButton
+diff --git a/modules/gui/qt/dialogs/dialogs_provider.cpp b/modules/gui/qt/dialogs/dialogs_provider.cpp
+index 1a9d1c1..282dae5 100644
+--- a/modules/gui/qt/dialogs/dialogs_provider.cpp
++++ b/modules/gui/qt/dialogs/dialogs_provider.cpp
+@@ -325,6 +325,11 @@ void DialogsProvider::classicPrefsDialog()
+ 
+ void DialogsProvider::firstRunDialog()
+ {
++    if (isSignalConnected(QMetaMethod::fromSignal(&DialogsProvider::onboardingRequested)))
++    {
++        emit onboardingRequested();
++        return;
++    }
+     ensureDialog(m_firstRunDialog);
+     QVLCDialog::setWindowTransientParent(m_firstRunDialog.get(), nullptr, p_intf);
+     m_firstRunDialog->show();
+diff --git a/modules/gui/qt/dialogs/dialogs_provider.hpp b/modules/gui/qt/dialogs/dialogs_provider.hpp
+index bf164fd..fea8342 100644
+--- a/modules/gui/qt/dialogs/dialogs_provider.hpp
++++ b/modules/gui/qt/dialogs/dialogs_provider.hpp
+@@ -313,6 +313,8 @@ signals:
+     void settingsRequested();
+     // Juxtopposed: asks the QML interface to open its keyboard shortcuts dialog
+     void hotkeysRequested();
++    // Juxtopposed: the first run is the QML onboarding when it is listening
++    void onboardingRequested();
+ #ifdef UPDATE_CHECK
+     void updateDialogVisibleChanged();
+ #endif
+diff --git a/modules/gui/qt/dialogs/preferences/vlc_settings.cpp b/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
+index 687d861..efb5b48 100644
+--- a/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
++++ b/modules/gui/qt/dialogs/preferences/vlc_settings.cpp
+@@ -33,6 +33,7 @@
+ #include <QDir>
+ #include <QLocale>
+ #include <QFileDialog>
++#include <QStandardPaths>
+ #include <QUrl>
+ 
+ #include <vlc_actions.h>
+@@ -304,6 +305,36 @@ void VLCSettings::runExtension(const QString &name)
+     emit extensionsChanged();
+ }
+ 
++QString VLCSettings::defaultMediaFolder() const
++{
++    const QString videos = QStandardPaths::writableLocation(QStandardPaths::MoviesLocation);
++    return QDir::toNativeSeparators(videos.isEmpty() ? QDir::homePath() : videos);
++}
++
++QString VLCSettings::chooseFolder(const QString &start)
++{
++    const QString path = QFileDialog::getExistingDirectory(nullptr, qtr("Choose a media folder"),
++                                                           start.isEmpty() ? QDir::homePath() : start);
++    return path.isEmpty() ? QString() : QDir::toNativeSeparators(path);
++}
++
++void VLCSettings::finishOnboarding(const QString &mediaFolder)
++{
++    if (!mediaFolder.isEmpty())
++    {
++        if (vlc_medialibrary_t *ml = vlc_ml_instance_get(m_intf))
++        {
++            const QByteArray mrl = QUrl::fromLocalFile(mediaFolder).toString(QUrl::FullyEncoded).toUtf8();
++            vlc_ml_add_folder(ml, mrl.constData());
++        }
++    }
++
++    // what VLC's first run wizard ends with; the privacy choice it asked
++    // about (metadata-network-access) is left as it is, in Settings > Privacy
++    config_PutInt("qt-privacy-ask", 0);
++    save();
++}
++
+ QString VLCSettings::addLibraryFolder()
+ {
+     vlc_medialibrary_t *ml = vlc_ml_instance_get(m_intf);
+diff --git a/modules/gui/qt/dialogs/preferences/vlc_settings.hpp b/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
+index aa9c968..3c9109e 100644
+--- a/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
++++ b/modules/gui/qt/dialogs/preferences/vlc_settings.hpp
+@@ -57,6 +57,13 @@ public:
+     // background); returns it, or empty if cancelled or there is no library
+     Q_INVOKABLE QString addLibraryFolder();
+ 
++    // Onboarding: the user's videos folder, a folder picker (empty if
++    // cancelled), and the end of the first run, which adds the folder (if
++    // any) to the media library and stops VLC from showing the first run again
++    Q_INVOKABLE QString defaultMediaFolder() const;
++    Q_INVOKABLE QString chooseFolder(const QString &start);
++    Q_INVOKABLE void finishOnboarding(const QString &mediaFolder);
++
+     // Every hotkey action: [{ name: "key-...", text, value, globalValue }]
+     Q_INVOKABLE QVariantList hotkeys() const;
+ 
+diff --git a/modules/gui/qt/maininterface/qml/MainInterface.qml b/modules/gui/qt/maininterface/qml/MainInterface.qml
+index c7f135b..2847f39 100644
+--- a/modules/gui/qt/maininterface/qml/MainInterface.qml
++++ b/modules/gui/qt/maininterface/qml/MainInterface.qml
+@@ -364,6 +364,35 @@ Item {
+             }
+         }
+ 
++        // Juxtopposed: the first run, above everything else
++        Loader {
++            id: onboardingLoader
++
++            anchors.fill: parent
++            z: 12
++
++            active: false
++            focus: active
++            source: "qrc:///qt/qml/VLC/Dialogs/Onboarding.qml"
++
++            Connections {
++                target: DialogsProvider
++                function onOnboardingRequested() {
++                    onboardingLoader.active = true
++                    onboardingLoader.forceActiveFocus()
++                }
++            }
++
++            Connections {
++                target: onboardingLoader.item
++                ignoreUnknownSignals: true
++                function onClosed() {
++                    onboardingLoader.active = false
++                    viewLoader.forceActiveFocus()
++                }
++            }
++        }
++
+         // Juxtopposed: the keyboard shortcuts dialog, above the settings
+         // window it is usually opened from
+         Loader {
+diff --git a/modules/gui/qt/meson.build b/modules/gui/qt/meson.build
+index e59aa84..c0bad9c 100644
+--- a/modules/gui/qt/meson.build
++++ b/modules/gui/qt/meson.build
+@@ -618,6 +618,7 @@ qml_modules += {
+         'dialogs/dialogs/qml/SettingsPages.qml',
+         'dialogs/dialogs/qml/SettingsRow.qml',
+         'dialogs/dialogs/qml/HotkeysWindow.qml',
++        'dialogs/dialogs/qml/Onboarding.qml',
+         'dialogs/dialogs/qml/SettingsWindow.qml',
+         'dialogs/dialogs/qml/WindowDialog.qml',
+         'dialogs/toolbar/qml/EditorDNDDelegate.qml',
+-- 
+2.45.0.windows.1
+
